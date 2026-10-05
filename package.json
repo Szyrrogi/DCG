@@ -1,0 +1,19 @@
+{
+  "name": "dcg-online",
+  "version": "1.0.0",
+  "description": "DCG – karcianka ze znajomymi, multiplayer w przeglądarce",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node test/engine.test.js",
+    "test:all": "node test/engine.test.js && node test/market.test.js && node test/server.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "pg": "^8.13.1",
+    "ws": "^8.18.0"
+  }
+}

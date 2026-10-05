@@ -1,0 +1,871 @@
+[
+ {
+  "name": "26gang",
+  "desc": "Okrzyk Bojowy: Dodaj do ręki losową piosenkę",
+  "rarity": 1,
+  "cost": {
+   "T": 1,
+   "W": 0,
+   "B": 0,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "AddRandomSpellToHand",
+  "value": 1,
+  "art": "26gang.webp",
+  "atk": 1,
+  "hp": 1,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "67",
+  "desc": "",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 6
+  },
+  "type": "unit",
+  "effect": "",
+  "value": 5,
+  "art": "67.webp",
+  "atk": 6,
+  "hp": 7,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Agnieszka",
+  "desc": "Okrzyk Bojowy: Wskrześ losową jednostkę",
+  "rarity": 2,
+  "cost": {
+   "T": 2,
+   "W": 0,
+   "B": 0,
+   "D": 1
+  },
+  "type": "unit",
+  "effect": "ResurrectRandomUnit",
+  "value": 1,
+  "art": "Agnieszka.webp",
+  "atk": 3,
+  "hp": 4,
+  "tags": [
+   "Dziewczyna"
+  ],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Alternatywka",
+  "desc": "Okrzyk Bojowy: Otrzymuje +1 ataku jeżeli masz w ręce informatyka",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 2,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "BuffIfProgrammerInHand",
+  "value": 1,
+  "art": "Alternatywka.webp",
+  "atk": 1,
+  "hp": 3,
+  "tags": [
+   "Dziewczyna"
+  ],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Bedoes2115",
+  "desc": "Dobierz 5 piosenek z talii",
+  "rarity": 2,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 3,
+   "D": 2
+  },
+  "type": "unit",
+  "effect": "Draw5Spells",
+  "value": 5,
+  "art": "Bedoes2115.webp",
+  "atk": 2,
+  "hp": 5,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Błażej",
+  "desc": "Szarża, Położenie: Odrzuć dwie karty z ręki",
+  "rarity": 2,
+  "cost": {
+   "T": 3,
+   "W": 0,
+   "B": 0,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "ChargeDiscardTwo",
+  "value": 5,
+  "art": "Baej.webp",
+  "atk": 4,
+  "hp": 7,
+  "tags": [
+   "Lewc"
+  ],
+  "spellPower": 0,
+  "passive": "",
+  "charge": true,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Cas-Borg",
+  "desc": "Okrzyk Bojowy: Jeżeli masz Informatyka, zadaj 3 obrażenia WSZYSTKIM poza informatykami",
+  "rarity": 2,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 3,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "DamageAllExceptProgrammers",
+  "value": 3,
+  "art": "Cas_Borg.webp",
+  "atk": 3,
+  "hp": 3,
+  "tags": [
+   "Informatyk"
+  ],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Cypher",
+  "desc": "Przyzwij losową jednostkę z talii",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 2
+  },
+  "type": "spell",
+  "effect": "SummonRandomUnit",
+  "value": 5,
+  "art": "Cypher.webp"
+ },
+ {
+  "name": "Diss na Szymona",
+  "desc": "Zadaj 4 obrażenia i odrzuć kartę",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 1
+  },
+  "type": "spell",
+  "effect": "DamageAndDiscard",
+  "value": 4,
+  "art": "Diss_na_Szymona.webp"
+ },
+ {
+  "name": "Diss na taksówkarzy",
+  "desc": "Zadaj 5 obrażeń wrogiemu bohaterowi",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 3
+  },
+  "type": "spell",
+  "effect": "DamageEnemyHero",
+  "value": 5,
+  "art": "Diss_na_takswkarzy.webp"
+ },
+ {
+  "name": "Eva",
+  "desc": "Okrzyk bojowy: Zadaj 2 obrażenia sobie i dobierz kartę",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 1,
+   "B": 0,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "DamageSelfAndDraw",
+  "value": 2,
+  "art": "Eva.webp",
+  "atk": 1,
+  "hp": 1,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Gdy Zapada Noc",
+  "desc": "Przywróć 5 zdrowia",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 2
+  },
+  "type": "spell",
+  "effect": "HealFriendlyHero",
+  "value": 5,
+  "art": "Gdy_Zapada_Noc.webp"
+ },
+ {
+  "name": "Grzesiek",
+  "desc": "Okrzyk Bojowy: Odrzuć kartę z ręki",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 2,
+   "B": 0,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "DiscardCardFromHand",
+  "value": 5,
+  "art": "Grzesiek.webp",
+  "atk": 3,
+  "hp": 6,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Gustav",
+  "desc": "Okrzyk Bojowy: Cofnij losową inną swoją jednostkę do ręki",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 2
+  },
+  "type": "unit",
+  "effect": "ReturnFriendlyToHand",
+  "value": 1,
+  "art": "Gustav.webp",
+  "atk": 2,
+  "hp": 2,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": 2,
+  "hiddenDeath": true
+ },
+ {
+  "name": "Jade Jade Jade",
+  "desc": "Zadaj 1 obrażenie losowemu wrogowi 3 razy",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 1
+  },
+  "type": "spell",
+  "effect": "DamageRandomEnemy3Times",
+  "value": 1,
+  "art": "Jade_Jade_Jade.webp"
+ },
+ {
+  "name": "Jędrek",
+  "desc": "Dopóki jest na planszy: odrzucone jednostki zamiast na cmentarz trafiają na planszę",
+  "rarity": 3,
+  "cost": {
+   "T": 0,
+   "W": 4,
+   "B": 0,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "",
+  "value": 5,
+  "art": "Jdrek.webp",
+  "atk": 5,
+  "hp": 5,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "PlayDiscardedUnits",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Jeżyk",
+  "desc": "Okrzyk Bojowy: Dobierz Julii lub Jędrka",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 1,
+   "B": 0,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "DrawSpecificCard",
+  "value": 5,
+  "art": "Jeyk.webp",
+  "atk": 1,
+  "hp": 1,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Jestem zmęczony za bardzo",
+  "desc": "Zniszcz wybraną wrogą jednostkę",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 4
+  },
+  "type": "spell",
+  "effect": "DestroyTargetMinion",
+  "value": 1,
+  "art": "Jestem_zmczony_za_bardzo.webp",
+  "target": "enemyUnit"
+ },
+ {
+  "name": "Julii",
+  "desc": "Okrzyk Bojowy: Ustaw Zdrowie na 30",
+  "rarity": 3,
+  "cost": {
+   "T": 0,
+   "W": 4,
+   "B": 0,
+   "D": 2
+  },
+  "type": "unit",
+  "effect": "SetHealthTo30",
+  "value": 5,
+  "art": "Julii.webp",
+  "atk": 4,
+  "hp": 6,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Julka",
+  "desc": "Okrzyk Bojowy: Przeciwnik odrzuca kartę",
+  "rarity": 1,
+  "cost": {
+   "T": 2,
+   "W": 0,
+   "B": 0,
+   "D": 1
+  },
+  "type": "unit",
+  "effect": "OpponentDiscardsCard",
+  "value": 1,
+  "art": "Julka.webp",
+  "atk": 2,
+  "hp": 2,
+  "tags": [
+   "Dziewczyna"
+  ],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Ksawery",
+  "desc": "Okrzyk Bojowy: Otrzymuje +1 HP za każdą kartę na ręce",
+  "rarity": 1,
+  "cost": {
+   "T": 2,
+   "W": 0,
+   "B": 0,
+   "D": 1
+  },
+  "type": "unit",
+  "effect": "BuffPerCardInHand",
+  "value": 1,
+  "art": "Ksawery.webp",
+  "atk": 4,
+  "hp": 1,
+  "tags": [
+   "Informatyk"
+  ],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Kubba",
+  "desc": "Moc pieśni +1",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 3
+  },
+  "type": "unit",
+  "effect": "",
+  "value": 5,
+  "art": "Kubba.webp",
+  "atk": 2,
+  "hp": 2,
+  "tags": [],
+  "spellPower": 1,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Lian",
+  "desc": "Może atakować dwa razy na turę",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 3
+  },
+  "type": "unit",
+  "effect": "",
+  "value": 5,
+  "art": "Lian.webp",
+  "atk": 2,
+  "hp": 2,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "TwoAttacks",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Massyn",
+  "desc": "Okrzyk Bojowy: Zniszcz WSZYSTKICH stroników, odrzuć wszystkie karty z ręki",
+  "rarity": 3,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 4,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "DestroyAllMinionsDiscardHand",
+  "value": 5,
+  "art": "Massyn.webp",
+  "atk": 9,
+  "hp": 9,
+  "tags": [
+   "Informatyk"
+  ],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Moja Przygoda (Remix)",
+  "desc": "Zadaj obu bohaterom 5 obrażeń",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 1,
+   "B": 0,
+   "D": 0
+  },
+  "type": "spell",
+  "effect": "DamageBothHeroes",
+  "value": 5,
+  "art": "Moja_Przygoda_Remix.webp"
+ },
+ {
+  "name": "Mordekaiser",
+  "desc": "Zwiększ Bydgoszcz o 1",
+  "rarity": 1,
+  "cost": {
+   "T": 1,
+   "W": 1,
+   "B": 0,
+   "D": 1
+  },
+  "type": "unit",
+  "effect": "IncreaseBydgoszczMana",
+  "value": 1,
+  "art": "Mordekaiser.webp",
+  "atk": 3,
+  "hp": 4,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Natis",
+  "desc": "Okrzyk Bojowy: Otrzymuje +1/1 gdy masz w ręce informatyka",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 4
+  },
+  "type": "unit",
+  "effect": "BuffIfProgrammerInHandBoth",
+  "value": 1,
+  "art": "Natis.webp",
+  "atk": 2,
+  "hp": 3,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Oczekiwania",
+  "desc": "Zadaj 4 obrażenia wszystkim wrogim jednostkom",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 5
+  },
+  "type": "spell",
+  "effect": "DamageAllEnemies",
+  "value": 4,
+  "art": "Oczekiwania.webp"
+ },
+ {
+  "name": "Ola z kajaków",
+  "desc": "Po dwóch turach zniknij",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 2,
+   "B": 0,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "",
+  "value": 5,
+  "art": "Ola_z_kajakw.webp",
+  "atk": 2,
+  "hp": 5,
+  "tags": [
+   "Dziewczyna"
+  ],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": 2
+ },
+ {
+  "name": "Olaf",
+  "desc": "Gdy Agnieszka jest na planszy, ma podwójny atak",
+  "rarity": 3,
+  "cost": {
+   "T": 4,
+   "W": 0,
+   "B": 0,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "",
+  "value": 5,
+  "art": "Olaf.webp",
+  "atk": 4,
+  "hp": 6,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "DoubleAttackIfAgnieszka",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Runia",
+  "desc": "+1 Ataku za każdą zagraną piosenkę",
+  "rarity": 1,
+  "cost": {
+   "T": 1,
+   "W": 0,
+   "B": 0,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "",
+  "value": 5,
+  "art": "Runia.webp",
+  "atk": 0,
+  "hp": 3,
+  "tags": [
+   "Dziewczyna"
+  ],
+  "spellPower": 0,
+  "passive": "BuffOnSpellCast",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Siostra Kirszenstein",
+  "desc": "Okrzyk Bojowy: Dobierz Lewca",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "DrawCardWithTag",
+  "value": 2,
+  "art": "Siostra_Kirszenstein.webp",
+  "atk": 1,
+  "hp": 1,
+  "tags": [
+   "Dziewczyna"
+  ],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Song Jinwoo",
+  "desc": "Na koniec Twojej tury otrzymuje +1/+1",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 2
+  },
+  "type": "unit",
+  "effect": "",
+  "value": 5,
+  "art": "Song_Jinwoo.webp",
+  "atk": 1,
+  "hp": 2,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "GainStatEndTurn",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "SzyRRogi",
+  "desc": "Moc pieśni + 4",
+  "rarity": 3,
+  "cost": {
+   "T": 4,
+   "W": 0,
+   "B": 0,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "",
+  "value": 0,
+  "art": "SzyRRogi.webp",
+  "atk": 1,
+  "hp": 8,
+  "tags": [
+   "Informatyk"
+  ],
+  "spellPower": 4,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Szymon",
+  "desc": "Okrzyk Bojowy: Ma 50% na cofnięcie do ręki",
+  "rarity": 2,
+  "cost": {
+   "T": 2,
+   "W": 0,
+   "B": 0,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "ReturnToHandRandom",
+  "value": 5,
+  "art": "Szymon.webp",
+  "atk": 4,
+  "hp": 4,
+  "tags": [
+   "Lewc"
+  ],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Tael",
+  "desc": "Twoja piosenki kosztują 1 mniej",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 2
+  },
+  "type": "unit",
+  "effect": "",
+  "value": 1,
+  "art": "Tael.webp",
+  "atk": 1,
+  "hp": 3,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "SongsDiscounted",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Tofame",
+  "desc": "Okrzyk Bojowy: Zagraj 3 dziewczyny z talii",
+  "rarity": 3,
+  "cost": {
+   "T": 0,
+   "W": 3,
+   "B": 0,
+   "D": 2
+  },
+  "type": "unit",
+  "effect": "SummonGirlfriends",
+  "value": 0,
+  "art": "Tofame.webp",
+  "atk": 4,
+  "hp": 5,
+  "tags": [
+   "Informatyk"
+  ],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Widz z devszyr",
+  "desc": "Okrzyk Bojowy: Otrzymuje +2 zdrowia gdy masz informatyka na ręce",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 1,
+   "D": 0
+  },
+  "type": "unit",
+  "effect": "BuffIfProgrammerInHandHealth",
+  "value": 2,
+  "art": "Widz_z_devszyr.webp",
+  "atk": 2,
+  "hp": 1,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Wieczni Chłodne Dłonie",
+  "desc": "Zamróź wszystkie wrogie jednostki (nie zaatakują w następnej turze)",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 1,
+   "B": 0,
+   "D": 1
+  },
+  "type": "spell",
+  "effect": "FreezeAllEnemies",
+  "value": 1,
+  "art": "Wieczni_Chodne_Donie.webp"
+ },
+ {
+  "name": "Yeager",
+  "desc": "Okrzyk Bojowy: Zwiększ zdrowie bohatera o 3",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 2
+  },
+  "type": "unit",
+  "effect": "HealFriendlyHero",
+  "value": 3,
+  "art": "Yeager.webp",
+  "atk": 2,
+  "hp": 3,
+  "tags": [],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ },
+ {
+  "name": "Zuzia",
+  "desc": "Okrzyk Bojowy: Ustaw zdrowie przeciwnika na zdrowie twoje",
+  "rarity": 2,
+  "cost": {
+   "T": 0,
+   "W": 3,
+   "B": 0,
+   "D": 1
+  },
+  "type": "unit",
+  "effect": "SetEnemyHealthToYours",
+  "value": 5,
+  "art": "Zuzia.webp",
+  "atk": 4,
+  "hp": 4,
+  "tags": [
+   "Dziewczyna"
+  ],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1
+ }
+]

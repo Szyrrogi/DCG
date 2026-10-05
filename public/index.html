@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DCG – Karcianka</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="img/pack_gold.webp">
+</head>
+<body>
+
+<!-- LOGOWANIE -->
+<section id="scr-login" class="screen bg-menu">
+  <form id="login-form" class="panel login-panel" autocomplete="on">
+    <h1 class="logo">DCG</h1>
+    <p class="muted">Karcianka ze znajomymi</p>
+    <div id="login-users" class="login-users"></div>
+    <label>Login<input id="login-user" name="username" autocomplete="username" required></label>
+    <label>Hasło<input id="login-pass" name="password" type="password" autocomplete="current-password" required></label>
+    <button class="btn gold" type="submit">Zaloguj</button>
+    <p id="login-error" class="error"></p>
+    <button type="button" id="btn-show-register" class="btn ghost">Nie masz konta? Załóż nowe</button>
+    <p id="conn-status" class="muted small"></p>
+  </form>
+  <form id="register-form" class="panel login-panel register-panel hidden" autocomplete="off">
+    <h1 class="logo small">Nowe konto</h1>
+    <label>Nazwa gracza<input id="reg-user" maxlength="16" autocomplete="username" required></label>
+    <label>Hasło<input id="reg-pass" type="password" minlength="4" autocomplete="new-password" required></label>
+    <label>Powtórz hasło<input id="reg-pass2" type="password" minlength="4" autocomplete="new-password" required></label>
+    <p class="muted small">Wybierz zdjęcie profilowe – dowolną kartę:</p>
+    <div id="reg-avatars" class="av-grid reg-avatars"></div>
+    <button class="btn gold" type="submit">Załóż konto i graj</button>
+    <p id="reg-error" class="error"></p>
+    <button type="button" id="btn-back-login" class="btn ghost">← Wróć do logowania</button>
+  </form>
+</section>
+
+<!-- MENU GŁÓWNE -->
+<section id="scr-hub" class="screen bg-menu hidden">
+  <header class="topbar">
+    <div class="logo small">DCG</div>
+    <nav class="tabs">
+      <button data-tab="play" class="tab active">Graj</button>
+      <button data-tab="packs" class="tab">Paczki</button>
+      <button data-tab="collection" class="tab">Kolekcja</button>
+      <button data-tab="market" class="tab">Rynek</button>
+      <button data-tab="profile" class="tab">Profil</button>
+      <button data-tab="admin" class="tab admin-only hidden">Admin</button>
+    </nav>
+    <div class="me-box">
+      <span class="gold-pill" title="Złoto"><i class="coin"></i><b id="me-gold">0</b></span>
+      <img id="me-avatar" class="avatar-sm" alt="">
+      <span id="me-name"></span>
+      <button id="btn-logout" class="btn ghost small">Wyloguj</button>
+    </div>
+  </header>
+
+  <!-- GRAJ / LOBBY -->
+  <div id="tab-play" class="tab-body">
+    <div class="play-grid">
+      <div class="panel">
+        <h2>Gracze</h2>
+        <label class="row">Twoja talia:
+          <select id="play-deck"></select>
+        </label>
+        <p id="play-deck-hint" class="muted small"></p>
+        <div id="lobby-list" class="lobby-list"></div>
+      </div>
+      <div class="panel">
+        <h2>Bonus za 5 różnych przeciwników</h2>
+        <p class="muted small">Za każdą wygraną: <b class="gold-t">+10 złota</b>. Pokonaj 5 różnych graczy → <b class="gold-t">+100 złota</b>, a lista się resetuje.</p>
+        <div id="bonus-track" class="bonus-track"></div>
+        <h2>Ranking</h2>
+        <table class="rank"><thead><tr><th>Gracz</th><th>W</th><th>P</th><th>Bonusy</th><th>Złoto</th></tr></thead><tbody id="rank-body"></tbody></table>
+        <h2>Ostatnie mecze</h2>
+        <ul id="history" class="history"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- PACZKI -->
+  <div id="tab-packs" class="tab-body hidden">
+    <div class="packs">
+      <div class="panel pack-box">
+        <img src="img/pack_std.webp" alt="Zwykła paczka" class="pack-img">
+        <h3>Zwykła paczka</h3>
+        <p class="muted small">5 kart · 1% legenda · 10% rzadka</p>
+        <p>Masz: <b id="cnt-std">0</b></p>
+        <div class="row">
+          <button class="btn" data-buy="std">Kup za <span class="gold-t">50</span></button>
+          <button class="btn gold" data-open="std">Otwórz</button>
+        </div>
+      </div>
+      <div class="panel pack-box">
+        <img src="img/pack_gold.webp" alt="Legendarna paczka" class="pack-img">
+        <h3>Legendarna paczka</h3>
+        <p class="muted small">5 kart · pierwsza zawsze legendarna</p>
+        <p>Masz: <b id="cnt-leg">0</b></p>
+        <div class="row">
+          <button class="btn" data-buy="leg">Kup za <span class="gold-t">500</span></button>
+          <button class="btn gold" data-open="leg">Otwórz</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KOLEKCJA + TALIE -->
+  <div id="tab-collection" class="tab-body hidden">
+    <div class="coll-grid">
+      <div class="panel coll-left">
+        <div class="filters">
+          <input id="f-search" placeholder="Szukaj…">
+          <select id="f-type"><option value="">Wszystkie typy</option><option value="unit">Jednostki</option><option value="spell">Piosenki</option></select>
+          <select id="f-rarity"><option value="">Każda rzadkość</option><option value="1">Zwykłe</option><option value="2">Rzadkie</option><option value="3">Legendarne</option></select>
+          <select id="f-city"><option value="">Każde miasto</option><option value="T">Tczew</option><option value="W">Warszawa</option><option value="B">Bydgoszcz</option><option value="N">Tylko dowolna</option></select>
+          <label class="chk"><input type="checkbox" id="f-owned"> tylko posiadane</label>
+        </div>
+        <p id="coll-summary" class="muted small"></p>
+        <div id="coll-cards" class="card-grid"></div>
+      </div>
+      <div class="panel coll-right">
+        <div id="deck-list-view">
+          <h2>Talie</h2>
+          <button id="btn-new-deck" class="btn gold wide">+ Nowa talia</button>
+          <div id="deck-list" class="deck-list"></div>
+        </div>
+        <div id="deck-edit-view" class="hidden">
+          <input id="deck-name" class="deck-name" maxlength="30">
+          <div class="deck-count"><b id="deck-count">0</b> / <span id="deck-size">20</span></div>
+          <p class="muted small">Klikaj karty z kolekcji, żeby dodać. Kliknij pasek, żeby usunąć. Zwykłe: max 3 kopie, rzadkie i legendarne: 1.</p>
+          <div id="deck-curve" class="curve"></div>
+          <div id="deck-cards" class="deck-cards"></div>
+          <div class="row wrap">
+            <button id="btn-deck-save" class="btn gold">Zapisz</button>
+            <button id="btn-deck-auto" class="btn">Uzupełnij</button>
+            <button id="btn-deck-clear" class="btn ghost">Wyczyść</button>
+            <button id="btn-deck-cancel" class="btn ghost">Anuluj</button>
+            <button id="btn-deck-delete" class="btn danger">Usuń</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RYNEK WYMIANY -->
+  <div id="tab-market" class="tab-body hidden">
+    <div class="market-grid">
+      <div class="panel">
+        <h2>Wystaw ofertę</h2>
+        <p class="muted small">Wymieniać można tylko karty tej samej rzadkości. Karta nie znika, dopóki ktoś nie przyjmie oferty. Gdy ktoś wystawi dokładnie odwrotną ofertę, wymiana dzieje się od razu.</p>
+        <h3 class="small">Oddam:</h3>
+        <div id="m-give" class="pick-grid"></div>
+        <h3 class="small" id="m-want-label">Chcę dostać:</h3>
+        <div id="m-want" class="pick-grid"></div>
+        <p id="m-warn" class="warn small"></p>
+        <div class="row"><button id="m-post" class="btn gold" disabled>Wystaw na rynek</button><span id="m-summary" class="small"></span></div>
+      </div>
+      <div class="panel">
+        <div class="row" style="justify-content:space-between;flex-wrap:wrap">
+          <h2>Oferty</h2>
+          <select id="m-filter">
+            <option value="">Wszystkie</option>
+            <option value="can">Mogę przyjąć</option>
+            <option value="new">Karty, których nie mam</option>
+            <option value="mine">Moje oferty</option>
+          </select>
+        </div>
+        <div id="m-offers" class="offers"></div>
+        <h2>Ostatnie wymiany</h2>
+        <ul id="m-trades" class="history"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- PROFIL -->
+  <div id="tab-profile" class="tab-body hidden">
+    <div class="profile-grid">
+      <div class="panel">
+        <h2>Twój bohater</h2>
+        <div id="avatar-pick"></div>
+      </div>
+      <form id="pw-form" class="panel">
+        <h2>Zmiana hasła</h2>
+        <label>Stare hasło<input type="password" id="pw-old" autocomplete="current-password" required></label>
+        <label>Nowe hasło<input type="password" id="pw-new" autocomplete="new-password" minlength="4" required></label>
+        <label>Powtórz nowe hasło<input type="password" id="pw-new2" autocomplete="new-password" minlength="4" required></label>
+        <button class="btn gold" type="submit">Zmień hasło</button>
+        <p id="pw-msg" class="small"></p>
+      </form>
+      <div class="panel">
+        <h2>Statystyki</h2>
+        <div id="my-stats"></div>
+        <h2>Zasady w skrócie</h2>
+        <ul class="rules small">
+          <li>Talia: 20 kart. Start: 20 zdrowia, 3 karty w ręce, karta na turę.</li>
+          <li>Raz na turę rozbudowujesz jedno miasto (+). Kule many kosztują kolejno 1, 1, 2, 2 rozbudowy, max 4 na miasto.</li>
+          <li>Karty płacisz manę miast; szary koszt to mana dowolnego miasta.</li>
+          <li>Jednostki atakują od następnej tury (chyba że mają Szarżę). Klik na swoją jednostkę → klik na cel.</li>
+          <li>Pusta talia = zmęczenie (1, 2, 3… obrażeń). Max 10 kart w ręce, 7 jednostek na planszy.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADMIN (konta z listy ADMINS, domyślnie szyrrogi) -->
+  <div id="tab-admin" class="tab-body hidden">
+    <div class="panel">
+      <div class="row" style="justify-content:space-between"><h2>Panel administratora – gracze</h2><button id="btn-admin-refresh" class="btn small">Odśwież</button></div>
+      <p class="muted small">Zmiany zapisują się od razu w bazie i gracz widzi je natychmiast.</p>
+      <div class="table-wrap"><table class="admin"><thead><tr><th>Gracz</th><th>Złoto</th><th>Paczki (zwykłe / legendarne)</th><th></th></tr></thead><tbody id="admin-body"></tbody></table></div>
+    </div>
+  </div>
+</section>
+
+<!-- WALKA -->
+<section id="scr-game" class="screen bg-board hidden">
+  <div class="battle">
+    <div class="side opp">
+      <div class="hero-area">
+        <div class="hero" data-id="hero-opp" id="hero-opp"></div>
+        <div class="pile" id="opp-pile"></div>
+      </div>
+      <div class="mana-row" id="mana-opp"></div>
+      <div class="opp-hand" id="opp-hand"></div>
+    </div>
+    <div class="board-wrap">
+      <div class="board" id="board-opp"></div>
+      <div class="midline"><span id="turn-banner"></span></div>
+      <div class="board" id="board-me"></div>
+    </div>
+    <div class="side me">
+      <div class="hero-area">
+        <div class="hero" data-id="hero-me" id="hero-me"></div>
+        <div class="pile" id="me-pile"></div>
+      </div>
+      <div class="mana-row" id="mana-me"></div>
+      <button id="btn-end" class="btn end-btn">Koniec tury</button>
+    </div>
+    <div class="hand" id="hand-me"></div>
+    <aside class="log" id="log"><div class="log-head"><b title="Kliknij, aby rozwinąć">📜 Dziennik</b><button id="btn-concede" class="btn danger small">Poddaj się</button></div><div id="log-body"></div></aside>
+  </div>
+  <div id="hint" class="hint"></div>
+  <div id="opp-left" class="opp-left hidden"><span id="opp-left-text"></span> <button id="btn-claim" class="btn gold small">Odbierz walkower</button></div>
+  <div id="played" class="played hidden"></div>
+</section>
+
+<!-- MODALE -->
+<div id="modal" class="modal hidden"><div class="modal-box" id="modal-box"></div></div>
+<div id="pack-overlay" class="pack-overlay hidden">
+  <h2 id="pack-title">Otwieranie paczki</h2>
+  <div id="pack-cards" class="pack-cards"></div>
+  <div class="row center">
+    <button id="btn-reveal-all" class="btn">Odkryj wszystkie</button>
+    <button id="btn-pack-close" class="btn gold hidden">Zamknij</button>
+  </div>
+</div>
+<div id="preview" class="preview hidden"></div>
+<div id="toasts" class="toasts"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

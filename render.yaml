@@ -1,0 +1,18 @@
+# Render Blueprint – Render czyta ten plik i sam zakłada serwis z gry.
+services:
+  - type: web
+    name: dcg
+    runtime: node
+    plan: free
+    region: frankfurt          # najbliżej Polski
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true           # każdy push na GitHuba = nowa wersja gry
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL      # adres bazy z neon.tech – Render poprosi o niego przy tworzeniu
+        sync: false
+      - key: ADMINS
+        value: szyrrogi

@@ -47,6 +47,7 @@ class Game {
       hand: [],
       board: [],
       grave: [],
+      dead: [],        // jednostki, które naprawdę zginęły na planszy (do wskrzeszania)
       mana: { T: { lvl: 0, prog: 0, used: 0 }, W: { lvl: 0, prog: 0, used: 0 }, B: { lvl: 0, prog: 0, used: 0 } },
       manaActionUsed: false,
       fatigue: 0,
@@ -60,6 +61,9 @@ class Game {
     this.fx = [];
     this.seq = 0;
     this.turnStartedAt = Date.now();
+    this.phase = 'mulligan';           // 'mulligan' → 'play'
+    this.mulliganDone = [false, false];
+    this.pendingQueue = [];            // wybory gracza: odrzucenie karty / wskrzeszenie
   }
 
   // ---------- pomocnicze ----------
@@ -73,8 +77,82 @@ class Game {
 
   start() {
     for (let k = 0; k < START_HAND; k++) { this.draw(0); this.draw(1); }
-    this.say(`Zaczyna ${this.players[this.current].name}.`);
-    this.startTurn(this.current);
+    this.say(`Zaczyna ${this.players[this.current].name}. Wymiana kart startowych…`);
+  }
+
+  // ---------- mulligan: wymiana kart startowych ----------
+  mulligan(i, uids) {
+    if (this.phase !== 'mulligan') throw new GameError('Wymiana kart już się skończyła.');
+    if (this.mulliganDone[i]) throw new GameError('Już wymieniłeś karty.');
+    const p = this.players[i];
+    const out = [...new Set(Array.isArray(uids) ? uids : [])].map(u => p.hand.find(c => c.uid === u)).filter(Boolean);
+    for (const c of out) p.hand.splice(p.hand.indexOf(c), 1);
+    for (let k = 0; k < out.length; k++) this.draw(i);          // najpierw nowe karty…
+    for (const c of out) p.deck.splice(Math.floor(this.rng() * (p.deck.length + 1)), 0, { uid: c.uid, name: c.name }); // …potem stare wracają do talii
+    this.mulliganDone[i] = true;
+    this.say(`${p.name} ${out.length ? `wymienia ${out.length} ${out.length === 1 ? 'kartę' : out.length < 5 ? 'karty' : 'kart'}` : 'zostawia rękę'}.`);
+    if (this.mulliganDone[0] && this.mulliganDone[1]) {
+      this.phase = 'play';
+      this.startTurn(this.current);
+    }
+  }
+  autoMulligan() { for (const i of [0, 1]) if (!this.mulliganDone[i] && !this.over) { this.fx = []; this.mulligan(i, []); } this.seq++; }
+
+  // ---------- wybory gracza (odrzucenie, wskrzeszenie) ----------
+  get pending() { return this.pendingQueue[0] || null; }
+  resurrectOptions(i) { return [...new Set(this.players[i].dead.filter(n => BY_NAME[n] && BY_NAME[n].type === 'unit'))]; }
+  resurrect(i, name) {
+    const p = this.players[i];
+    p.dead.splice(p.dead.indexOf(name), 1);
+    const g = p.grave.lastIndexOf(name); if (g >= 0) p.grave.splice(g, 1);
+    this.say(`Wskrzeszono ${name}!`);
+    this.summon(i, this.newCard(name), { battlecry: false, fromPlay: true });
+  }
+  // rozwiązuje wybory, które nie wymagają decyzji; zatrzymuje się na pierwszym, który wymaga
+  resolvePending() {
+    while (this.pendingQueue.length && !this.over) {
+      const q = this.pendingQueue[0], p = this.players[q.player];
+      if (q.type === 'discard') {
+        if (q.count <= 0 || p.hand.length === 0) { this.pendingQueue.shift(); continue; }
+        if (p.hand.length <= q.count) {           // nie ma z czego wybierać – odrzuć wszystko
+          this.pendingQueue.shift();
+          for (const c of p.hand.slice()) this.discard(q.player, c);
+          this.sweep();
+          continue;
+        }
+        if (q.player !== this.current) {         // wybór w turze przeciwnika (np. przez Jędrka) – losowo
+          q.count--; if (q.count <= 0) this.pendingQueue.shift();
+          this.discard(q.player, this.pick(p.hand)); this.sweep();
+          continue;
+        }
+        return;                                   // gracz musi wybrać
+      }
+      if (q.type === 'resurrect') {
+        const opts = this.resurrectOptions(q.player);
+        if (!opts.length) { this.say('Brak poległych jednostek do wskrzeszenia.'); this.pendingQueue.shift(); continue; }
+        if (p.board.length >= BOARD_LIMIT) { this.say('Plansza pełna – nie ma miejsca na wskrzeszenie.'); this.pendingQueue.shift(); continue; }
+        if (opts.includes('Olaf')) { this.pendingQueue.shift(); this.resurrect(q.player, 'Olaf'); continue; } // Olaf ma pierwszeństwo
+        this.pendingQueue.shift(); this.resurrect(q.player, this.pick(opts));   // losowa poległa jednostka
+        continue;
+      }
+      this.pendingQueue.shift();
+    }
+  }
+  choose(i, a) {
+    const q = this.pending;
+    if (!q || q.player !== i) throw new GameError('Nie ma nic do wybrania.');
+    const p = this.players[i];
+    if (q.type === 'discard') {
+      const c = p.hand.find(x => x.uid === a.uid);
+      if (!c) throw new GameError('Wybierz kartę z ręki.');
+      q.count--;
+      if (q.count <= 0) this.pendingQueue.shift();
+      this.discard(i, c);
+    } else if (q.type === 'resurrect') {
+      if (!this.resurrectOptions(i).includes(a.name)) throw new GameError('Wybierz jednostkę z listy.');
+      this.pendingQueue.shift();
+      this.resurrect(i, a.name);
+    }
   }
 
   // ---------- mana ----------
@@ -187,12 +265,13 @@ class Game {
     this.fx.push({ type: 'heal', id: this.heroId(i), amount });
   }
 
-  destroyUnit(i, unit) {
+  destroyUnit(i, unit, { vanish = false } = {}) {
     const p = this.players[i];
     const idx = p.board.indexOf(unit);
     if (idx < 0) return;
     p.board.splice(idx, 1);
     p.grave.push(unit.name);
+    if (!vanish) p.dead.push(unit.name);   // zniknięcie (Ola, Gustav) to nie śmierć
     this.fx.push({ type: 'die', id: unit.uid });
   }
 
@@ -269,15 +348,9 @@ class Game {
         break;
       }
       case 'SetHealthTo30': me.hp = 30; this.fx.push({ type: 'heal', id: this.heroId(i), amount: 0 }); this.say(`Zdrowie ${me.name} ustawione na 30.`); break;
-      case 'ResurrectRandomUnit': {
-        const units = me.grave.filter(n => BY_NAME[n] && BY_NAME[n].type === 'unit');
-        const n = this.pick(units);
-        if (!n) { this.say('Cmentarz pusty – brak jednostki do wskrzeszenia.'); break; }
-        me.grave.splice(me.grave.indexOf(n), 1);
-        this.say(`Wskrzeszono ${n}!`);
-        this.summon(i, this.newCard(n), { battlecry: false, fromPlay: true });
+      case 'ResurrectFriendlyUnit':   // Agnieszka: losowa własna jednostka, która zginęła (Olaf zawsze pierwszy)
+        this.pendingQueue.push({ player: i, type: 'resurrect' });
         break;
-      }
       case 'DamageAllExceptProgrammers': {
         if (!progInHand()) { this.say('Brak informatyka w ręce – efekt nie działa.'); break; }
         for (const pi of [0, 1]) for (const u of this.players[pi].board) if (!this.hasTag(u, 'Informatyk')) this.damageUnit(u, value);
@@ -290,11 +363,15 @@ class Game {
         break;
       case 'ChargeDiscardTwo':
         if (src) src.attacksLeft = this.attacksPerTurn(src);
-        this.discardRandom(i); this.discardRandom(i);
+        this.pendingQueue.push({ player: i, type: 'discard', count: 2 });
         break;
       case 'BuffIfProgrammerInHand': if (src && progInHand()) { src.atk += value; this.say(`${src.name} +${value} ataku.`); } break;
       case 'BuffIfProgrammerInHandHealth': if (src && progInHand()) { src.hp += value; src.maxHp += value; this.say(`${src.name} +${value} zdrowia.`); } break;
-      case 'BuffIfProgrammerInHandBoth': if (src && progInHand()) { src.atk += value; src.hp += value; src.maxHp += value; this.say(`${src.name} +${value}/+${value}.`); } break;
+      case 'BuffIfProgrammerInHandBoth': {
+        const hp = BY_NAME[src ? src.name : ''] && BY_NAME[src.name].valueHp != null ? BY_NAME[src.name].valueHp : value;
+        if (src && progInHand()) { src.atk += value; src.hp += hp; src.maxHp += hp; this.say(`${src.name} +${value}/+${hp}.`); }
+        break;
+      }
       case 'BuffPerCardInHand': if (src) { const n = me.hand.length; src.hp += n; src.maxHp += n; this.say(`${src.name} +${n} zdrowia.`); } break;
       case 'AddRandomSpellToHand': {
         const spells = me.deck.filter(c => this.data(c).type === 'spell');
@@ -328,9 +405,9 @@ class Game {
         break;
       case 'DamageRandomEnemy3Times':
         for (let k = 0; k < 3; k++) {
-          const alive = them.board.filter(u => u.hp > 0);
-          const t = this.pick(alive);
-          if (t) this.damageUnit(t, value); else this.damageHero(o, value);
+          // losowy cel: żywa wroga jednostka albo wrogi bohater
+          const t = this.pick([...them.board.filter(u => u.hp > 0), 'hero']);
+          if (t === 'hero') this.damageHero(o, value); else this.damageUnit(t, value);
         }
         break;
       case 'DestroyTargetMinion': {
@@ -350,10 +427,10 @@ class Game {
         break;
       case 'DamageAndDiscard':
         this.damageHero(o, value); this.say(`${them.name} otrzymuje ${value} obrażeń.`);
-        this.discardRandom(i);
+        this.pendingQueue.push({ player: i, type: 'discard', count: 1 });
         break;
       case 'IncreaseBydgoszczMana': this.addManaProgress(me, 'B'); this.say(`${me.name} rozbudowuje Bydgoszcz.`); break;
-      case 'DiscardCardFromHand': this.discardRandom(i); break;
+      case 'DiscardCardFromHand': this.pendingQueue.push({ player: i, type: 'discard', count: 1 }); break;
       case 'ReturnFriendlyToHand': {
         const t = this.pick(me.board.filter(u => u !== src));
         if (t && this.returnToHand(i, t)) this.say(`${t.name} wraca do ręki.`);
@@ -379,13 +456,14 @@ class Game {
     for (const u of p.board) {
       // zamrożona jednostka traci ataki w tej turze; lód topnieje na końcu tury
       u.attacksLeft = u.frozen ? 0 : this.attacksPerTurn(u);
+      if (this.data(u).passive === 'GainStatStartTurn') { u.atk++; u.hp++; u.maxHp++; this.fx.push({ type: 'buff', id: u.uid }); }
     }
     // jednostki, które giną po X turach
     for (const u of p.board.slice()) {
       const d = this.data(u);
       if (d.turnsUntilDeath > 0) {
         u.turnsAlive++;
-        if (u.turnsAlive >= d.turnsUntilDeath) { this.destroyUnit(i, u); this.say(d.hiddenDeath ? `${u.name} nagle znika!` : `${u.name} znika.`); }
+        if (u.turnsAlive >= d.turnsUntilDeath) { this.destroyUnit(i, u, { vanish: true }); this.say(d.hiddenDeath ? `${u.name} nagle znika!` : `${u.name} znika.`); }
       }
     }
     this.checkEnd();
@@ -421,9 +499,13 @@ class Game {
     if (this.over) throw new GameError('Gra się skończyła.');
     this.fx = [];
     if (a.type === 'concede') { this.say(`${this.players[i].name} poddaje się.`); this.finish(this.opp(i), 'concede'); this.seq++; return; }
+    if (a.type === 'mulligan') { this.mulligan(i, a.uids); this.seq++; return; }
+    if (this.phase === 'mulligan') throw new GameError('Najpierw wymiana kart startowych.');
     if (i !== this.current) throw new GameError('To nie Twoja tura.');
     const p = this.players[i];
+    if (this.pending && a.type !== 'choose') throw new GameError(this.pending.type === 'discard' ? 'Najpierw wybierz kartę do odrzucenia.' : 'Najpierw wybierz jednostkę do wskrzeszenia.');
     switch (a.type) {
+      case 'choose': this.choose(i, a); break;
       case 'mana': {
         if (!CITIES.includes(a.city)) throw new GameError('Złe miasto.');
         if (p.manaActionUsed) throw new GameError('Już rozbudowałeś miasto w tej turze.');
@@ -445,6 +527,7 @@ class Game {
         if (d.type === 'unit') {
           this.say(`${p.name} zagrywa ${card.name}.`);
           this.summon(i, card, { fromPlay: true });
+          if (d.endsTurn) this.autoEndTurn = true;   // np. Zuzia – po zagraniu tura się kończy
         } else {
           this.say(`${p.name} gra piosenkę ${card.name}.`);
           this.runEffect(d.effect, d.value, i, true, null, a.target);
@@ -484,7 +567,16 @@ class Game {
       default: throw new GameError('Nieznana akcja.');
     }
     this.sweep();
+    this.resolvePending();
+    this.sweep();
     this.checkEnd();
+    if (this.autoEndTurn && !this.pending && !this.over && this.current === i) {
+      this.autoEndTurn = false;
+      this.say(`Tura ${p.name} kończy się automatycznie.`);
+      this.endTurnPassives(i);
+      this.sweep();
+      if (!this.checkEnd()) this.startTurn(this.opp(i));
+    }
     this.seq++;
   }
 
@@ -494,7 +586,7 @@ class Game {
     const unitView = (pi, u) => ({
       uid: u.uid, name: u.name, atk: this.attackOf(pi, u), hp: u.hp, maxHp: u.maxHp,
       baseAtk: BY_NAME[u.name].atk, baseHp: BY_NAME[u.name].hp,
-      canAttack: pi === this.current && u.attacksLeft > 0, attacksLeft: u.attacksLeft, frozen: u.frozen,
+      canAttack: this.phase === 'play' && !this.pending && pi === this.current && u.attacksLeft > 0, attacksLeft: u.attacksLeft, frozen: u.frozen,
       // ukryta zdolność (np. Gustav) – przeciwnik ani właściciel nie widzą licznika
       turnsLeft: BY_NAME[u.name].turnsUntilDeath > 0 && !BY_NAME[u.name].hiddenDeath ? BY_NAME[u.name].turnsUntilDeath - u.turnsAlive : null,
     });
@@ -510,9 +602,14 @@ class Game {
     };
     return {
       id: this.id, seq: this.seq, turnNo: this.turnNo, mySeat: i,
-      myTurn: this.current === i, over: this.over,
+      myTurn: this.phase === 'play' && this.current === i, over: this.over,
+      phase: this.phase, mulliganEndsAt: this.mulliganEndsAt || null,
+      mulligan: this.phase === 'mulligan' ? { me: this.mulliganDone[i], opp: this.mulliganDone[this.opp(i)] } : null,
+      pending: this.pending ? (this.pending.player === i
+        ? { mine: true, type: this.pending.type, count: this.pending.count || 0, options: this.pending.options || null }
+        : { mine: false, type: this.pending.type }) : null,
       winner: this.over ? (this.winner === i ? 'me' : 'opp') : null, endReason: this.endReason,
-      me: { ...pub(i), hand: me.hand.map(c => ({ uid: c.uid, name: c.name, cost: this.effectiveCost(i, c), playable: this.current === i && !this.over && this.canPay(me, this.effectiveCost(i, c)) && !(BY_NAME[c.name].type === 'unit' && me.board.length >= BOARD_LIMIT) })) },
+      me: { ...pub(i), hand: me.hand.map(c => ({ uid: c.uid, name: c.name, cost: this.effectiveCost(i, c), playable: this.phase === 'play' && !this.pending && this.current === i && !this.over && this.canPay(me, this.effectiveCost(i, c)) && !(BY_NAME[c.name].type === 'unit' && me.board.length >= BOARD_LIMIT) })) },
       opp: pub(this.opp(i)),
       log: this.log.slice(-30).map(l => l.text),
       fx: this.fx,

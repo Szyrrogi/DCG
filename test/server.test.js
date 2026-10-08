@@ -57,6 +57,7 @@ async function buildDeck(c) {
 // prosta "sztuczna inteligencja": gra karty, rozbudowuje miasta, bije w twarz
 function chooseMove(v) {
   const me = v.me;
+  if (v.pending && v.pending.mine) return v.pending.type === 'discard' ? { type: 'choose', uid: me.hand[0].uid } : { type: 'choose', name: v.pending.options[0] };
   if (!me.manaActionUsed) { const c = ['T', 'W', 'B'].sort((a, b) => me.mana[a].lvl - me.mana[b].lvl)[0]; if (me.mana[c].lvl < 4) return { type: 'mana', city: c }; }
   const p = me.hand.find(c => c.playable);
   if (p) return { type: 'play', uid: p.uid, target: v.opp.board[0] && v.opp.board[0].uid };
@@ -71,6 +72,10 @@ async function playMatch(a, b, aDeck, bDeck) {
   const ch = await b.wait(m => m.t === 'challenged');
   b.send({ t: 'acceptChallenge', from: ch.from, deckId: bDeck });
   await a.wait(m => m.t === 'game'); await b.wait(m => m.t === 'game');
+  // wymiana kart startowych: a wymienia pierwszą kartę, b zostawia rękę
+  a.send({ t: 'act', action: { type: 'mulligan', uids: [a.view.me.hand[0].uid] } });
+  b.send({ t: 'act', action: { type: 'mulligan', uids: [] } });
+  await a.wait(m => m.t === 'game' && m.view.phase === 'play'); await b.wait(m => m.t === 'game' && m.view.phase === 'play');
   let guard = 0;
   for (;;) {
     if (++guard > 3000) throw new Error('mecz się nie kończy');

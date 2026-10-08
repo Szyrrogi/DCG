@@ -19,7 +19,16 @@ function newGame(deckA = randomDeck(), deckB = randomDeck()) {
     { userId: 'b', name: 'B', deck: deckB },
   ]);
   g.start();
+  g.action(0, { type: 'mulligan', uids: [] });
+  g.action(1, { type: 'mulligan', uids: [] });
   return g;
+}
+function pickPending(g) {
+  // rozwiązuje oczekujący wybór pierwszą/losową opcją
+  const q = g.pending; if (!q) return;
+  const p = g.players[q.player];
+  if (q.type === 'discard') g.action(q.player, { type: 'choose', uid: p.hand[Math.floor(Math.random() * p.hand.length)].uid });
+  else g.action(q.player, { type: 'choose', name: q.options[Math.floor(Math.random() * q.options.length)] });
 }
 function giveMana(g, i, n = 4) { for (const c of ['T', 'W', 'B']) g.players[i].mana[c] = { lvl: n, prog: 0, used: 0 }; }
 function put(g, i, name) { const c = g.newCard(name); g.players[i].hand.push(c); return c; }
@@ -28,7 +37,7 @@ let passed = 0;
 function test(name, fn) { fn(); passed++; console.log('✓', name); }
 
 test('wszystkie efekty kart są obsługiwane', () => {
-  const known = ['', 'HealFriendlyHero', 'DamageEnemyHero', 'SummonGirlfriends', 'DestroyAllMinionsDiscardHand', 'SetHealthTo30', 'ResurrectRandomUnit', 'DamageAllExceptProgrammers', 'ReturnToHandRandom', 'ChargeDiscardTwo', 'BuffIfProgrammerInHand', 'AddRandomSpellToHand', 'OpponentDiscardsCard', 'DrawCardWithTag', 'DrawSpecificCard', 'Draw5Spells', 'BuffIfProgrammerInHandHealth', 'FreezeAllEnemies', 'DamageRandomEnemy3Times', 'DestroyTargetMinion', 'SummonRandomUnit', 'DamageAllEnemies', 'DamageAndDiscard', 'IncreaseBydgoszczMana', 'DiscardCardFromHand', 'ReturnFriendlyToHand', 'BuffIfProgrammerInHandBoth', 'BuffPerCardInHand', 'SetEnemyHealthToYours', 'DamageSelfAndDraw', 'DamageBothHeroes'];
+  const known = ['', 'HealFriendlyHero', 'DamageEnemyHero', 'SummonGirlfriends', 'DestroyAllMinionsDiscardHand', 'SetHealthTo30', 'ResurrectFriendlyUnit', 'DamageAllExceptProgrammers', 'ReturnToHandRandom', 'ChargeDiscardTwo', 'BuffIfProgrammerInHand', 'AddRandomSpellToHand', 'OpponentDiscardsCard', 'DrawCardWithTag', 'DrawSpecificCard', 'Draw5Spells', 'BuffIfProgrammerInHandHealth', 'FreezeAllEnemies', 'DamageRandomEnemy3Times', 'DestroyTargetMinion', 'SummonRandomUnit', 'DamageAllEnemies', 'DamageAndDiscard', 'IncreaseBydgoszczMana', 'DiscardCardFromHand', 'ReturnFriendlyToHand', 'BuffIfProgrammerInHandBoth', 'BuffPerCardInHand', 'SetEnemyHealthToYours', 'DamageSelfAndDraw', 'DamageBothHeroes'];
   for (const c of CARDS) assert(known.includes(c.effect), 'brak efektu ' + c.effect);
 });
 
@@ -83,8 +92,89 @@ test('szarża Błażeja i odrzucenie 2 kart', () => {
   const b = put(g, i, 'Błażej');
   const before = g.players[i].hand.length;
   g.action(i, { type: 'play', uid: b.uid });
+  assert.strictEqual(g.pending.type, 'discard'); assert.strictEqual(g.pending.count, 2);
+  assert.throws(() => g.action(i, { type: 'attack', uid: b.uid, target: 'hero' }), /odrzucenia/);
+  const [c1, c2] = g.players[i].hand;
+  g.action(i, { type: 'choose', uid: c1.uid });
+  g.action(i, { type: 'choose', uid: c2.uid });
   assert.strictEqual(g.players[i].hand.length, before - 3);
+  assert(!g.players[i].hand.includes(c1) && !g.players[i].hand.includes(c2));
+  assert(g.players[i].grave.includes(c1.name));
   g.action(i, { type: 'attack', uid: b.uid, target: 'hero' });
+});
+
+test('mulligan: wymienione karty wracają do talii, gra startuje po obu graczach', () => {
+  const g = new Game('m', [{ userId: 'a', name: 'A', deck: randomDeck() }, { userId: 'b', name: 'B', deck: randomDeck() }]);
+  g.start();
+  assert.strictEqual(g.phase, 'mulligan');
+  assert.throws(() => g.action(g.current, { type: 'end' }), /wymiana/i);
+  const h = g.players[0].hand.slice(0, 2).map(c => c.uid);
+  g.action(0, { type: 'mulligan', uids: h });
+  assert.strictEqual(g.players[0].hand.length, 3);
+  assert(!g.players[0].hand.some(c => h.includes(c.uid)));
+  assert.strictEqual(g.players[0].deck.length, 17);
+  assert.strictEqual(g.phase, 'mulligan');
+  g.action(1, { type: 'mulligan', uids: [] });
+  assert.strictEqual(g.phase, 'play');
+  assert.strictEqual(g.players[g.current].hand.length, 4);
+});
+
+test('Agnieszka wskrzesza losową poległą jednostkę, Olaf ma pierwszeństwo, odrzucone się nie liczą', () => {
+  const g = newGame(); const i = g.current;
+  giveMana(g, i);
+  const me = g.players[i];
+  me.grave.push('Massyn');            // odrzucona, nie zginęła
+  const a = g.summon(i, g.newCard('Kubba'), { battlecry: false }); g.destroyUnit(i, a);
+  const b = g.summon(i, g.newCard('67'), { battlecry: false }); g.destroyUnit(i, b);
+  const ag = put(g, i, 'Agnieszka');
+  g.action(i, { type: 'play', uid: ag.uid });
+  assert.strictEqual(g.pending, null);
+  assert(me.board.some(u => ['Kubba', '67'].includes(u.name)));
+  assert(!me.board.some(u => u.name === 'Massyn'));
+  const o = g.summon(i, g.newCard('Olaf'), { battlecry: false }); g.destroyUnit(i, o);
+  giveMana(g, i);
+  const ag2 = put(g, i, 'Agnieszka');
+  g.action(i, { type: 'play', uid: ag2.uid });
+  assert(me.board.some(u => u.name === 'Olaf'));
+});
+
+test('Zuzia kończy turę po zagraniu', () => {
+  const g = newGame(); const i = g.current, o = 1 - i;
+  giveMana(g, i);
+  g.players[i].hp = 10;
+  const z = put(g, i, 'Zuzia');
+  g.action(i, { type: 'play', uid: z.uid });
+  assert.strictEqual(g.players[o].hp, 10);
+  assert.strictEqual(g.current, o);
+});
+
+test('Natis +2/+1, Song Jinwoo rośnie na początku tury, Siostra kosztuje 1', () => {
+  const g = newGame(); const i = g.current, o = 1 - i;
+  giveMana(g, i);
+  g.players[i].hand.push(g.newCard('Ksawery'));
+  const n = put(g, i, 'Natis');
+  g.action(i, { type: 'play', uid: n.uid });
+  const nu = g.players[i].board.find(u => u.uid === n.uid);
+  assert.strictEqual(nu.atk, 4); assert.strictEqual(nu.hp, 4);
+  const s = g.summon(i, g.newCard('Song Jinwoo'), { battlecry: false });
+  assert.strictEqual(s.atk, 1); assert.strictEqual(s.hp, 1);
+  g.action(i, { type: 'end' });
+  assert.strictEqual(s.atk, 1);
+  g.action(o, { type: 'end' });
+  assert.strictEqual(s.atk, 2); assert.strictEqual(s.hp, 2);
+  assert.strictEqual(BY_NAME['Siostra Kirszenstein'].cost.D, 1);
+});
+
+test('Jade Jade Jade może trafić też wrogiego bohatera', () => {
+  let heroHit = false;
+  for (let k = 0; k < 50 && !heroHit; k++) {
+    const g = newGame(); const i = g.current, o = 1 - i;
+    g.summon(o, g.newCard('67'), { battlecry: false });
+    const hp = g.players[o].hp;
+    g.runEffect('DamageRandomEnemy3Times', 1, i, true, null);
+    if (g.players[o].hp < hp) heroHit = true;
+  }
+  assert(heroHit);
 });
 
 test('moc pieśni dodaje się do obrażeń piosenek', () => {
@@ -137,20 +227,21 @@ test('zamrożenie blokuje atak w następnej turze', () => {
   g.action(o, { type: 'attack', uid: enemy.uid, target: 'hero' });
 });
 
-test('Ola z kajaków znika po 2 turach', () => {
+test('Ola z kajaków znika po 3 turach', () => {
   const g = newGame(); const i = g.current, o = 1 - i;
   g.summon(i, g.newCard('Ola z kajaków'), { battlecry: false });
-  g.action(i, { type: 'end' }); g.action(o, { type: 'end' });
+  for (let k = 0; k < 2; k++) { g.action(i, { type: 'end' }); g.action(o, { type: 'end' }); }
   assert(g.players[i].board.some(u => u.name === 'Ola z kajaków'));
   g.action(i, { type: 'end' }); g.action(o, { type: 'end' });
   assert(!g.players[i].board.some(u => u.name === 'Ola z kajaków'));
+  assert(!g.players[i].dead.includes('Ola z kajaków'), 'zniknięcie to nie śmierć');
 });
 
-test('Gustav po cichu znika po 2 turach, Jeżyk nie dobiera Julki', () => {
+test('Gustav po cichu znika po 3 turach, Jeżyk nie dobiera Julki', () => {
   const g = newGame(); const i = g.current, o = 1 - i;
   const gu = g.summon(i, g.newCard('Gustav'), { battlecry: false });
   assert.strictEqual(g.view(i).me.board.find(u => u.uid === gu.uid).turnsLeft, null);
-  g.action(i, { type: 'end' }); g.action(o, { type: 'end' });
+  for (let k = 0; k < 2; k++) { g.action(i, { type: 'end' }); g.action(o, { type: 'end' }); }
   assert(g.players[i].board.includes(gu));
   g.action(i, { type: 'end' }); g.action(o, { type: 'end' });
   assert(!g.players[i].board.includes(gu));
@@ -208,10 +299,13 @@ test('widok ukrywa rękę przeciwnika', () => {
 test('5000 losowych gier bez błędów i z zachowaniem limitów', () => {
   let finished = 0;
   for (let n = 0; n < 5000; n++) {
-    const g = newGame();
+    const g = new Game('f', [{ userId: 'a', name: 'A', deck: randomDeck() }, { userId: 'b', name: 'B', deck: randomDeck() }]);
+    g.start();
+    for (const s of [0, 1]) g.action(s, { type: 'mulligan', uids: g.players[s].hand.filter(() => Math.random() < 0.4).map(c => c.uid) });
     let steps = 0;
     while (!g.over && steps < 3000) {
       steps++;
+      if (g.pending) { pickPending(g); continue; }
       const i = g.current, p = g.players[i], o = g.players[1 - i];
       const moves = [];
       if (!p.manaActionUsed) for (const c of ['T', 'W', 'B']) if (p.mana[c].lvl < 4) moves.push({ type: 'mana', city: c });

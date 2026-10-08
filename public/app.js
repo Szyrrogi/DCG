@@ -360,7 +360,7 @@ function cardHtml(name, o = {}) {
 }
 const totalCost = c => c.cost.T + c.cost.W + c.cost.B + c.cost.D;
 // pogrubienie słów kluczowych w opisach kart
-const KEYWORDS = /(Okrzyk Bojowy|Szarża|Położenie|Moc pie[sś]ni(?: \+ ?\d+)?|Zamr[oó]ź\p{L}*|Wskrze[sś]\p{L}*|Odrzu[cć]\p{L}*|odrzucone|Dobierz|Przyzwij|Przywołaj|Zagraj|Zniszcz\p{L}*|Cofnij|cofnięcie|Zwiększ|piosen\p{L}*|informatyk\p{L}*|dziewczyn\p{L}*|Lewca?|dwa razy|Na koniec Twojej tury|podwójny atak|Po dwóch turach zniknij|\d+%|\+\d+\/\+\d+|\+\d+ (?:ataku|zdrowia|HP)|\d+ obraże\p{L}*|\d+ zdrowia)/giu;
+const KEYWORDS = /(Okrzyk Bojowy|Szarża|Położenie|Moc pie[sś]ni(?: \+ ?\d+)?|Zamr[oó]ź\p{L}*|Wskrze[sś]\p{L}*|Odrzu[cć]\p{L}*|odrzucone|Dobierz|Przyzwij|Przywołaj|Zagraj|Zniszcz\p{L}*|Cofnij|cofnięcie|Zwiększ|piosen\p{L}*|informatyk\p{L}*|dziewczyn\p{L}*|Lewca?|dwa razy|Na koniec Twojej tury|podwójny atak|Po (?:dwóch|trzech) turach zniknij|Na początku Twojej tury|wybran\p{L}*|\d+%|\+\d+\/\+\d+|\+\d+ (?:ataku|zdrowia|HP)|\d+ obraże\p{L}*|\d+ zdrowia)/giu;
 const kw = text => esc(text).replace(KEYWORDS, '<b>$1</b>');
 
 // ================= paczki =================
@@ -722,7 +722,7 @@ function onGame(v) {
 async function processView(v) {
   const first = !S.view || S.view.id !== v.id;
   const prev = first ? null : S.view;
-  if (first) { S.sel = null; S.gameOverShown = false; $('#opp-left').classList.add('hidden'); closeModal(); $('.battle').classList.remove('defeat'); }
+  if (first) { S.sel = null; S.mullSel = new Set(); S.mullSent = false; S.gameOverShown = false; $('#opp-left').classList.add('hidden'); closeModal(); $('.battle').classList.remove('defeat'); }
   show('game');
   const fast = S.queued > 2;           // zaległości – pomijamy długie animacje
   if (prev && !fast) await animateBefore(v, prev);
@@ -821,7 +821,7 @@ function animateAfter(v, prev, first, fast) {
   }
 
   // początek tury
-  if ((prev && prev.myTurn !== v.myTurn) || first) {
+  if (v.phase === 'play' && ((prev && (prev.myTurn !== v.myTurn || prev.phase !== v.phase)) || first)) {
     if (!v.over) turnBanner(v.myTurn ? 'TWOJA TURA' : `Tura: ${v.opp.name}`, v.myTurn);
   }
 }
@@ -902,7 +902,7 @@ function unitHtml(u, mine, v) {
 function renderGame() {
   const v = S.view; if (!v) return;
   const me = v.me, op = v.opp;
-  const canAct = v.myTurn && !v.over;
+  const canAct = v.myTurn && !v.over && !v.pending;
   $('#hero-opp').innerHTML = heroHtml(op, false);
   $('#hero-me').innerHTML = heroHtml(me, true);
   $('#hero-opp').classList.toggle('active-turn', !v.myTurn && !v.over);
@@ -920,7 +920,10 @@ function renderGame() {
   $('#board-me').innerHTML = me.board.map(u => unitHtml(u, true, v)).join('');
   const n = me.hand.length;
   $('#hand-me').style.setProperty('--hm', n <= 5 ? '4px' : n <= 7 ? '-14px' : '-34px');
-  $('#hand-me').innerHTML = me.hand.map(c => cardHtml(c.name, { cost: c.cost, cls: (c.playable ? 'playable' : '') + (S.sel && S.sel.uid === c.uid ? ' sel' : ''), attrs: `data-uid="${c.uid}"` })).join('');
+  const discarding = v.pending && v.pending.mine && v.pending.type === 'discard';
+  $('#hand-me').innerHTML = me.hand.map(c => cardHtml(c.name, { cost: c.cost, cls: (discarding ? 'pick-discard' : c.playable ? 'playable' : '') + (S.sel && S.sel.uid === c.uid ? ' sel' : ''), attrs: `data-uid="${c.uid}"` })).join('');
+  renderMulligan(v);
+  renderChoice(v);
   const tb = $('#turn-banner');
   tb.textContent = v.over ? 'KONIEC GRY' : v.myTurn ? 'TWOJA TURA' : `TURA: ${op.name}`;
   tb.classList.toggle('mine', v.myTurn && !v.over);
@@ -956,7 +959,11 @@ function renderGame() {
 function updateHint() {
   const h = $('#hint');
   let t = '';
-  if (S.sel && S.sel.kind === 'attacker') t = 'Wybierz cel ataku: wrogą jednostkę lub bohatera';
+  const v = S.view, pd = v && v.pending;
+  if (pd && pd.mine && pd.type === 'discard') t = S.sel && S.sel.kind === 'discard' ? 'Kliknij kartę ponownie, aby ją odrzucić' : `Wybierz kartę do odrzucenia${pd.count > 1 ? ` (jeszcze ${pd.count})` : ''}`;
+  else if (pd && pd.mine && pd.type === 'resurrect') t = 'Wybierz jednostkę do wskrzeszenia';
+  else if (pd && !pd.mine) t = pd.type === 'discard' ? 'Przeciwnik wybiera kartę do odrzucenia…' : 'Przeciwnik wybiera jednostkę do wskrzeszenia…';
+  else if (S.sel && S.sel.kind === 'attacker') t = 'Wybierz cel ataku: wrogą jednostkę lub bohatera';
   else if (S.sel && S.sel.kind === 'spell') t = 'Wybierz wrogą jednostkę do zniszczenia';
   else if (S.sel && S.sel.kind === 'preview') t = 'Stuknij ponownie, aby zagrać';
   h.textContent = t; h.classList.toggle('show', !!t);
@@ -966,6 +973,13 @@ function onHandClick(uid) {
   const v = S.view; if (!v || v.over) return;
   const card = v.me.hand.find(c => c.uid === uid);
   const data = S.byName[card.name];
+  if (v.pending && v.pending.mine && v.pending.type === 'discard') {
+    // odrzucanie: pierwsze kliknięcie zaznacza, drugie potwierdza
+    if (S.sel && S.sel.kind === 'discard' && S.sel.uid === uid) { S.sel = null; hidePreview(); act({ type: 'choose', uid }); }
+    else { S.sel = { kind: 'discard', uid }; if (TOUCH) showTouchPreview(card.name); }
+    renderGame(); return;
+  }
+  if (v.pending) { toast(v.pending.mine ? 'Najpierw dokończ wybór.' : 'Poczekaj, przeciwnik wybiera.'); return; }
   if (TOUCH && !(S.sel && S.sel.uid === uid)) { S.sel = { kind: 'preview', uid }; showTouchPreview(card.name); renderGame(); return; }
   hidePreview();
   if (!v.myTurn) { toast('Poczekaj na swoją turę.'); S.sel = null; renderGame(); return; }
@@ -1007,6 +1021,43 @@ $('#btn-concede').onclick = e => {
 };
 $('#log').addEventListener('click', e => { if (innerWidth <= 1100 && e.target.closest('.log-head') && !e.target.closest('button')) $('#log').classList.toggle('collapsed'); });
 if (innerWidth <= 1100) $('#log').classList.add('collapsed');
+
+// ---------- wymiana kart startowych ----------
+function renderMulligan(v) {
+  const box = $('#mulligan');
+  if (v.phase !== 'mulligan' || v.over) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  const done = v.mulligan && v.mulligan.me;
+  if (!S.mullSel) S.mullSel = new Set();
+  $('#mull-cards').innerHTML = v.me.hand.map(c => `<div class="mull-card ${!done && S.mullSel.has(c.uid) ? 'swap' : ''}" data-uid="${c.uid}">${cardHtml(c.name)}<span class="x">✕ wymień</span></div>`).join('');
+  $('#mull-title').textContent = done ? 'Twoja ręka startowa' : 'Wymiana kart startowych';
+  $('#mull-help').textContent = done ? '' : 'Kliknij karty, których nie chcesz – dostaniesz zamiast nich nowe z talii.';
+  const btn = $('#btn-mull');
+  btn.classList.toggle('hidden', !!done);
+  btn.textContent = S.mullSel.size ? `Wymień ${S.mullSel.size} i graj` : 'Zostaw rękę i graj';
+  $$('#mull-cards .mull-card').forEach(el => {
+    el.onclick = e => { e.stopPropagation(); if (done) return; const u = el.dataset.uid; S.mullSel.has(u) ? S.mullSel.delete(u) : S.mullSel.add(u); SFX.play('click'); renderMulligan(S.view); };
+  });
+  clearInterval(S.mullTimer);
+  const tick = () => {
+    const left = v.mulliganEndsAt ? Math.max(0, Math.ceil((v.mulliganEndsAt - Date.now()) / 1000)) : null;
+    $('#mull-info').textContent = (done ? (v.mulligan.opp ? '' : 'Czekam, aż przeciwnik wymieni karty… ') : '') + (left != null ? `Pozostało ${left} s` : '');
+  };
+  tick(); S.mullTimer = setInterval(() => { if (S.view && S.view.phase === 'mulligan') tick(); else clearInterval(S.mullTimer); }, 500);
+}
+$('#btn-mull').onclick = e => { e.stopPropagation(); act({ type: 'mulligan', uids: [...(S.mullSel || [])] }); S.mullSel = new Set(); };
+
+// ---------- wybór jednostki do wskrzeszenia ----------
+function renderChoice(v) {
+  const box = $('#choice');
+  const pd = v.pending;
+  if (!pd || !pd.mine || pd.type !== 'resurrect' || v.over) { box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  $('#choice-cards').innerHTML = (pd.options || []).map(n => `<div class="mull-card" data-name="${esc(n)}">${cardHtml(n)}</div>`).join('');
+  $$('#choice-cards .mull-card').forEach(el => {
+    el.onclick = e => { e.stopPropagation(); hidePreview(); act({ type: 'choose', name: el.dataset.name }); box.classList.add('hidden'); };
+  });
+}
 
 // efekty: liczby obrażeń, animacje wejścia, zagrana karta przeciwnika
 function floatAt(el, text, cls) {

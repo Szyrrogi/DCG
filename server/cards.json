@@ -45,7 +45,7 @@
  },
  {
   "name": "Agnieszka",
-  "desc": "Okrzyk Bojowy: Wskrześ losową jednostkę",
+  "desc": "Okrzyk Bojowy: Wskrześ losową swoją jednostkę, która zginęła. Zawsze najpierw wskrzesza Olafa",
   "rarity": 2,
   "cost": {
    "T": 2,
@@ -54,7 +54,7 @@
    "D": 1
   },
   "type": "unit",
-  "effect": "ResurrectRandomUnit",
+  "effect": "ResurrectFriendlyUnit",
   "value": 1,
   "art": "Agnieszka.webp",
   "atk": 3,
@@ -115,7 +115,7 @@
  },
  {
   "name": "Błażej",
-  "desc": "Szarża, Położenie: Odrzuć dwie karty z ręki",
+  "desc": "Szarża, Położenie: Odrzuć dwie wybrane karty z ręki",
   "rarity": 2,
   "cost": {
    "T": 3,
@@ -178,7 +178,7 @@
  },
  {
   "name": "Diss na Szymona",
-  "desc": "Zadaj 4 obrażenia i odrzuć kartę",
+  "desc": "Zadaj 4 obrażenia i odrzuć wybraną kartę",
   "rarity": 1,
   "cost": {
    "T": 0,
@@ -245,7 +245,7 @@
  },
  {
   "name": "Grzesiek",
-  "desc": "Okrzyk Bojowy: Odrzuć kartę z ręki",
+  "desc": "Okrzyk Bojowy: Odrzuć wybraną kartę z ręki",
   "rarity": 1,
   "cost": {
    "T": 0,
@@ -285,12 +285,12 @@
   "spellPower": 0,
   "passive": "",
   "charge": false,
-  "turnsUntilDeath": 2,
+  "turnsUntilDeath": 3,
   "hiddenDeath": true
  },
  {
   "name": "Jade Jade Jade",
-  "desc": "Zadaj 1 obrażenie losowemu wrogowi 3 razy",
+  "desc": "Zadaj 1 obrażenie losowemu wrogowi (jednostce lub bohaterowi) 3 razy",
   "rarity": 1,
   "cost": {
    "T": 0,
@@ -540,7 +540,7 @@
  },
  {
   "name": "Natis",
-  "desc": "Okrzyk Bojowy: Otrzymuje +1/+1, gdy masz w ręce informatyka",
+  "desc": "Okrzyk Bojowy: Otrzymuje +2/+1, gdy masz w ręce informatyka",
   "rarity": 1,
   "cost": {
    "T": 0,
@@ -550,7 +550,7 @@
   },
   "type": "unit",
   "effect": "BuffIfProgrammerInHandBoth",
-  "value": 1,
+  "value": 2,
   "art": "Natis.webp",
   "atk": 2,
   "hp": 3,
@@ -558,7 +558,8 @@
   "spellPower": 0,
   "passive": "",
   "charge": false,
-  "turnsUntilDeath": -1
+  "turnsUntilDeath": -1,
+  "valueHp": 1
  },
  {
   "name": "Oczekiwania",
@@ -577,7 +578,7 @@
  },
  {
   "name": "Ola z kajaków",
-  "desc": "Po dwóch turach zniknij",
+  "desc": "Po trzech turach zniknij",
   "rarity": 1,
   "cost": {
    "T": 0,
@@ -597,7 +598,7 @@
   "spellPower": 0,
   "passive": "",
   "charge": false,
-  "turnsUntilDeath": 2
+  "turnsUntilDeath": 3
  },
  {
   "name": "Olaf",
@@ -653,7 +654,7 @@
    "T": 0,
    "W": 0,
    "B": 0,
-   "D": 0
+   "D": 1
   },
   "type": "unit",
   "effect": "DrawCardWithTag",
@@ -671,7 +672,7 @@
  },
  {
   "name": "Song Jinwoo",
-  "desc": "Na koniec Twojej tury otrzymuje +1/+1",
+  "desc": "Na początku Twojej tury otrzymuje +1/+1",
   "rarity": 1,
   "cost": {
    "T": 0,
@@ -684,10 +685,10 @@
   "value": 5,
   "art": "Song_Jinwoo.webp",
   "atk": 1,
-  "hp": 2,
+  "hp": 1,
   "tags": [],
   "spellPower": 0,
-  "passive": "GainStatEndTurn",
+  "passive": "GainStatStartTurn",
   "charge": false,
   "turnsUntilDeath": -1
  },
@@ -846,7 +847,7 @@
  },
  {
   "name": "Zuzia",
-  "desc": "Okrzyk Bojowy: Ustaw zdrowie przeciwnika na zdrowie twoje",
+  "desc": "Okrzyk Bojowy: Ustaw zdrowie przeciwnika na zdrowie twoje. Po zagraniu Twoja tura od razu się kończy",
   "rarity": 2,
   "cost": {
    "T": 0,
@@ -866,6 +867,7 @@
   "spellPower": 0,
   "passive": "",
   "charge": false,
-  "turnsUntilDeath": -1
+  "turnsUntilDeath": -1,
+  "endsTurn": true
  }
 ]

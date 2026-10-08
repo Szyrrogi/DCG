@@ -233,6 +233,9 @@ function startGame(aId, aDeck, bId, bDeck) {
     { userId: b.id, name: b.username, avatar: b.avatar, deck: bDeck.cards },
   ]);
   g.start();
+  // wymiana kart startowych: kto nie zdecyduje w 40 s, zostaje z obecną ręką
+  g.mulliganEndsAt = Date.now() + 40_000;
+  setTimeout(() => { if (g.phase === 'mulligan' && !g.over) { g.autoMulligan(); sendGame(g); } }, 40_500);
   games.set(id, g);
   userGame.set(a.id, id); userGame.set(b.id, id);
   for (const k of [...challenges.keys()]) {

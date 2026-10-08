@@ -135,9 +135,11 @@ class Game {
     if (p.hand.length >= HAND_LIMIT) {
       p.grave.push(card.name);
       this.say(`${p.name} ma pełną rękę – ${card.name} spala się.`);
+      this.fx.push({ type: 'burn', by: i, name: card.name });
       return false;
     }
     p.hand.push({ uid: card.uid, name: card.name });
+    this.fx.push({ type: 'draw', by: i });
     return true;
   }
 

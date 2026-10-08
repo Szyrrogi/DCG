@@ -385,3 +385,84 @@ table.admin { width: 100%; border-collapse: collapse; }
   .offer .who { flex-direction: row; align-items: center; }
 }
 .pick-grid > p { grid-column: 1 / -1; }
+
+/* ================= pył i wytwarzanie ================= */
+.dust { width: 18px; height: 18px; border-radius: 50%; display: inline-block; background: radial-gradient(circle at 35% 35%, #fff, #c9b6ff 40%, #6a4fd6 75%, #2d1d6b); box-shadow: 0 0 8px rgba(185,160,255,.7); }
+.dust-pill b { color: #d8ccff; }
+.bump { animation: bump .45s; }
+@keyframes bump { 40% { transform: scale(1.18); } }
+.craft { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; text-align: left; }
+.craft-card { --cw: 200px; }
+.craft-info { display: flex; flex-direction: column; gap: 8px; }
+.dust-line { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.extra-list { max-height: 240px; overflow: auto; text-align: left; display: grid; gap: 2px; }
+.extra-list div { display: flex; justify-content: space-between; padding: 4px 8px; background: rgba(0,0,0,.3); border-radius: 6px; }
+#modal-box:has(.craft) { width: min(560px, 100%); }
+@media (max-width: 560px) { .craft { grid-template-columns: 1fr; justify-items: center; } .craft-card { --cw: 170px; } }
+
+/* ================= słowa kluczowe ================= */
+.card .ds b { color: #ffe08a; font-weight: 800; }
+
+/* ================= game feeling ================= */
+.particle { position: fixed; z-index: 45; border-radius: 50%; pointer-events: none; box-shadow: 0 0 6px currentColor; }
+.confetti { position: fixed; top: 0; z-index: 65; pointer-events: none; border-radius: 2px; }
+.float { font-size: 34px; }
+.float.big { font-size: 52px; color: #ff3b2f; }
+.unit.dying { animation: dying .43s ease-in forwards; pointer-events: none; }
+@keyframes dying { 0% { filter: none; } 30% { transform: translateX(-4px) rotate(-4deg); filter: grayscale(1) brightness(1.6); } 100% { transform: scale(.4) rotate(12deg); opacity: 0; filter: grayscale(1) brightness(.4); } }
+.unit.enter { animation: slam .42s cubic-bezier(.2,1.4,.4,1); }
+@keyframes slam { 0% { transform: translateY(-40px) scale(1.5); opacity: 0; } 60% { transform: translateY(4px) scale(.96); opacity: 1; } 100% { transform: none; } }
+.unit.buffed { animation: buffed .6s; }
+@keyframes buffed { 40% { filter: brightness(1.8) drop-shadow(0 0 10px #5fd068); transform: scale(1.08); } }
+.unit.freezing { animation: freezing .7s; }
+@keyframes freezing { 0% { filter: brightness(2) hue-rotate(160deg); } }
+.unit:hover { transform: translateY(-4px); }
+.unit.ready:hover { transform: translateY(-6px) scale(1.04); }
+.hero.hurt { animation: hurt .45s; }
+@keyframes hurt { 0%, 100% { transform: none; } 20% { transform: translateX(-7px); box-shadow: 0 0 0 4px #ff3b2f, 0 0 30px #ff3b2f; } 50% { transform: translateX(6px); } 75% { transform: translateX(-3px); } }
+.hero.healed { animation: healed .8s; }
+@keyframes healed { 30% { box-shadow: 0 0 0 4px #5fd068, 0 0 30px #5fd068; } }
+.hero.low .hp { animation: lowhp 1s infinite; }
+@keyframes lowhp { 50% { transform: scale(1.18); box-shadow: 0 0 18px #ff3b2f; } }
+.battle.defeat { filter: grayscale(.85) brightness(.6); transition: filter 1.2s; }
+
+/* stos talii */
+.deckpile { position: relative; width: 46px; height: 64px; flex-shrink: 0; }
+.deckpile .cardback { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; }
+.deckpile .cardback:nth-child(2) { transform: translate(2px, -2px); }
+.deckpile .cardback:nth-child(3) { transform: translate(4px, -4px); }
+.deckpile b { position: absolute; right: -8px; bottom: -6px; background: rgba(0,0,0,.85); border: 1px solid var(--line); border-radius: 8px; padding: 0 6px; font-size: 13px; z-index: 2; }
+.deckpile.empty { border: 2px dashed rgba(255,138,122,.5); border-radius: 6px; }
+.deckpile.empty b { color: #ff8a7a; }
+.pile { flex-direction: row; align-items: flex-end; gap: 12px; }
+.pile-txt { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--text); text-shadow: 0 1px 2px #000; }
+.cardback.flying { position: fixed; z-index: 44; width: 46px; height: 64px; margin: 0; pointer-events: none; }
+
+/* lot dobranej karty */
+.hand .card .cb { position: absolute; inset: -3px; background: url(img/pack_std.webp) center/cover; border-radius: var(--radius); z-index: 5; opacity: 0; pointer-events: none; }
+.hand .card.drawing { z-index: 20; pointer-events: none; }
+.hand.their-turn .card { filter: brightness(.82); }
+.hand .card.playable:hover { box-shadow: 0 0 0 3px var(--green), 0 0 26px var(--green); }
+
+/* mana */
+.orb.pop { animation: orbpop .6s cubic-bezier(.2,1.6,.4,1); }
+@keyframes orbpop { 0% { transform: scale(0); } 60% { transform: scale(1.6); box-shadow: 0 0 14px #fff; } 100% { transform: scale(1); } }
+.mana-col .plus { animation: plusglow 1.4s infinite; }
+@keyframes plusglow { 50% { box-shadow: 0 0 10px var(--green); } }
+
+/* koniec tury bez ruchów */
+.end-btn.nomoves { animation: nomoves 1s infinite; }
+@keyframes nomoves { 50% { box-shadow: 0 0 0 4px rgba(255,255,255,.7), 0 0 34px var(--green); filter: brightness(1.25); } }
+
+/* baner tury */
+.turn-splash { position: fixed; left: 0; right: 0; top: 42%; z-index: 42; text-align: center; pointer-events: none; font-family: var(--font-head); font-weight: 800; font-size: clamp(30px, 7vw, 72px); letter-spacing: .12em; opacity: 0; text-shadow: 0 4px 0 #3a2208, 0 0 40px rgba(242,193,78,.7); color: var(--gold); }
+.turn-splash.theirs { color: #e9d9c0; font-size: clamp(22px, 4.5vw, 44px); text-shadow: 0 3px 0 #000, 0 0 20px rgba(0,0,0,.8); }
+.turn-splash.show { animation: splash 1.3s ease-out; }
+.turn-splash::before { content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 120%; transform: translateY(-50%); background: linear-gradient(90deg, transparent, rgba(0,0,0,.65) 25%, rgba(0,0,0,.65) 75%, transparent); z-index: -1; }
+@keyframes splash { 0% { opacity: 0; transform: scale(1.8); letter-spacing: .5em; } 18% { opacity: 1; transform: scale(1); letter-spacing: .12em; } 75% { opacity: 1; } 100% { opacity: 0; transform: scale(.95); } }
+
+/* paczki */
+.pack-overlay.flash { animation: packflash .7s; }
+@keyframes packflash { 0% { background-color: rgba(255,220,120,.6); } }
+.flip:not(.open):hover { transform: translateY(-6px) rotate(-1deg); }
+.flip:not(.open):hover .back { filter: brightness(1.2); }

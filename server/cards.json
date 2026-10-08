@@ -540,7 +540,7 @@
  },
  {
   "name": "Natis",
-  "desc": "Okrzyk Bojowy: Otrzymuje +1/1 gdy masz w ręce informatyka",
+  "desc": "Okrzyk Bojowy: Otrzymuje +1/+1, gdy masz w ręce informatyka",
   "rarity": 1,
   "cost": {
    "T": 0,
@@ -741,7 +741,7 @@
  },
  {
   "name": "Tael",
-  "desc": "Twoja piosenki kosztują 1 mniej",
+  "desc": "Twoje piosenki kosztują 1 mniej",
   "rarity": 1,
   "cost": {
    "T": 0,

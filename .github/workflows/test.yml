@@ -18,4 +18,5 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: node test/market.test.js
+      - run: node test/craft.test.js
       - run: node test/server.test.js

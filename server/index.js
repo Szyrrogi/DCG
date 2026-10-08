@@ -31,6 +31,11 @@ const ADMINS = (process.env.ADMINS || 'szyrrogi').split(',').map(s => norm(s)).f
 const MAX_ACCOUNTS = 60;
 const FACES = 9;
 const MAX_OFFERS_PER_USER = 10;
+// Wytwarzanie (jak w Hearthstone): rozbijanie kart na pył i tworzenie wybranych kart z pyłu
+const DUST = {
+  disenchant: { 1: 5, 2: 20, 3: 100 },   // ile pyłu daje rozbicie
+  craft: { 1: 40, 2: 100, 3: 400 },      // ile kosztuje wytworzenie
+};
 const DEFAULT_PASSWORD = 'haslo';
 const FORFEIT_AFTER_MS = 60_000;
 
@@ -68,7 +73,7 @@ function newUser(name, avatar, password = DEFAULT_PASSWORD) {
   const { salt, hash } = hashPassword(password);
   return {
     id: 'u' + crypto.randomBytes(5).toString('hex'), username: name, salt, hash, avatar,
-    gold: START.gold, packs: { std: START.std, leg: START.leg },
+    gold: START.gold, dust: 0, packs: { std: START.std, leg: START.leg },
     collection: {}, decks: [], defeated: [],
     stats: { wins: 0, losses: 0, bonuses: 0 }, sessions: [],
   };
@@ -80,7 +85,7 @@ async function loadDb() {
   db.history = db.history || [];
   db.market = db.market || [];   // otwarte oferty wymiany
   db.trades = db.trades || [];   // historia wymian
-  for (const u of db.users) u.avatar = validAvatar(u.avatar) || 'f1'; // stare zapisy miały numer
+  for (const u of db.users) { u.avatar = validAvatar(u.avatar) || 'f1'; if (typeof u.dust !== 'number') u.dust = 0; } // starsze zapisy
   for (const [name, avatar, old] of ACCOUNTS) {
     const keys = [norm(name), ...old.map(norm)];
     const existing = db.users.find(u => keys.includes(norm(u.username)));
@@ -96,9 +101,9 @@ const isAdmin = u => ADMINS.includes(norm(u.username));
 
 function publicProfile(u) {
   return {
-    id: u.id, username: u.username, avatar: u.avatar, gold: u.gold, packs: u.packs,
+    id: u.id, username: u.username, avatar: u.avatar, gold: u.gold, dust: u.dust, packs: u.packs,
     collection: u.collection, decks: u.decks, defeated: u.defeated, stats: u.stats, isAdmin: isAdmin(u),
-    rules: { winGold: WIN_GOLD, bonusGold: BONUS_GOLD, bonusDistinct: BONUS_DISTINCT, deckSize: DECK_SIZE, packs: PACKS },
+    rules: { winGold: WIN_GOLD, bonusGold: BONUS_GOLD, bonusDistinct: BONUS_DISTINCT, deckSize: DECK_SIZE, packs: PACKS, dust: DUST },
   };
 }
 
@@ -370,6 +375,36 @@ function handle(ws, msg) {
       scheduleSave(); sendMe(u);
       return send(ws, { t: 'deckSaved', id: d.id });
     }
+    // ---------- wytwarzanie ----------
+    case 'disenchant': {
+      // msg.cards: { nazwa: ilość } – rozbija podane kopie (tylko wolne, nie wystawione na rynku)
+      const req = msg.cards && typeof msg.cards === 'object' ? msg.cards : { [msg.name]: msg.count || 1 };
+      let gained = 0, n = 0;
+      for (const [name, rawK] of Object.entries(req)) {
+        const c = BY_NAME[name]; const k = Math.floor(Number(rawK));
+        if (!c || !(k > 0)) return err('Zła karta do rozbicia.');
+        const free = (u.collection[name] || 0) - offeredCount(u, name);
+        if (k > free) return err(free > 0 ? `Możesz rozbić najwyżej ${free}× ${name}.` : `Nie masz wolnej kopii: ${name}${offeredCount(u, name) ? ' (jest wystawiona na rynku)' : ''}.`);
+      }
+      for (const [name, rawK] of Object.entries(req)) {
+        const k = Math.floor(Number(rawK));
+        u.collection[name] -= k; gained += DUST.disenchant[BY_NAME[name].rarity] * k; n += k;
+      }
+      u.dust += gained;
+      afterCollectionLoss(u);
+      scheduleSave(); sendMe(u); broadcastMarket();
+      return send(ws, { t: 'crafted', kind: 'disenchant', dust: gained, count: n });
+    }
+    case 'craft': {
+      const c = BY_NAME[msg.name];
+      if (!c) return err('Nieznana karta.');
+      const cost = DUST.craft[c.rarity];
+      if (u.dust < cost) return err(`Za mało pyłu – potrzeba ${cost}, masz ${u.dust}.`);
+      u.dust -= cost;
+      u.collection[c.name] = (u.collection[c.name] || 0) + 1;
+      scheduleSave(); sendMe(u);
+      return send(ws, { t: 'crafted', kind: 'craft', name: c.name, dust: cost });
+    }
     case 'marketPost': {
       const give = BY_NAME[msg.give], want = BY_NAME[msg.want];
       if (!give || !want) return err('Nieznana karta.');
@@ -463,7 +498,7 @@ function handle(ws, msg) {
       return;
     }
     // ---------- panel administratora ----------
-    case 'adminList': case 'adminSetGold': case 'adminAddGold': case 'adminSetPacks': case 'adminResetPassword': {
+    case 'adminList': case 'adminSetDust': case 'adminSetGold': case 'adminAddGold': case 'adminSetPacks': case 'adminResetPassword': {
       if (!isAdmin(u)) return err('Brak uprawnień administratora.');
       if (t !== 'adminList') {
         const target = userById(msg.id);
@@ -475,6 +510,9 @@ function handle(ws, msg) {
         } else if (t === 'adminAddGold') {
           const g = num(msg.amount); if (g === null || Math.abs(g) > 1e9) return err('Zła ilość złota.');
           target.gold = Math.max(0, target.gold + g);
+        } else if (t === 'adminSetDust') {
+          const g = num(msg.dust); if (g === null || g < 0 || g > 1e9) return err('Zła ilość pyłu.');
+          target.dust = g;
         } else if (t === 'adminSetPacks') {
           const a = num(msg.std), b = num(msg.leg);
           if (a === null || b === null || a < 0 || b < 0 || a > 10000 || b > 10000) return err('Zła liczba paczek.');
@@ -486,7 +524,7 @@ function handle(ws, msg) {
         sendTo(target.id, { t: 'toast', msg: t === 'adminResetPassword' ? 'Administrator zresetował Twoje hasło.' : 'Administrator zmienił Twoje konto.' });
         send(ws, { t: 'toast', msg: `Zapisano: ${target.username}` });
       }
-      return send(ws, { t: 'adminUsers', users: db.users.map(x => ({ id: x.id, username: x.username, avatar: x.avatar, gold: x.gold, packs: x.packs, stats: x.stats, online: sockets.has(x.id), cards: Object.values(x.collection).reduce((a, b) => a + b, 0) })) });
+      return send(ws, { t: 'adminUsers', users: db.users.map(x => ({ id: x.id, username: x.username, avatar: x.avatar, gold: x.gold, dust: x.dust, packs: x.packs, stats: x.stats, online: sockets.has(x.id), cards: Object.values(x.collection).reduce((a, b) => a + b, 0) })) });
     }
     case 'ping': return send(ws, { t: 'pong' });
     default: return err('Nieznana wiadomość.');

@@ -52,6 +52,8 @@
     </nav>
     <div class="me-box">
       <span class="gold-pill" title="Złoto"><i class="coin"></i><b id="me-gold">0</b></span>
+      <span class="gold-pill dust-pill" title="Pył – do wytwarzania kart (Kolekcja)"><i class="dust"></i><b id="me-dust">0</b></span>
+      <button class="btn ghost small btn-mute" type="button">🔊</button>
       <img id="me-avatar" class="avatar-sm" alt="">
       <span id="me-name"></span>
       <button id="btn-logout" class="btn ghost small">Wyloguj</button>
@@ -117,6 +119,7 @@
           <select id="f-rarity"><option value="">Każda rzadkość</option><option value="1">Zwykłe</option><option value="2">Rzadkie</option><option value="3">Legendarne</option></select>
           <select id="f-city"><option value="">Każde miasto</option><option value="T">Tczew</option><option value="W">Warszawa</option><option value="B">Bydgoszcz</option><option value="N">Tylko dowolna</option></select>
           <label class="chk"><input type="checkbox" id="f-owned"> tylko posiadane</label>
+          <button id="btn-dust-extra" class="btn small" type="button" title="Rozbij kopie ponad limit talii">💥 Rozbij nadmiarowe</button>
         </div>
         <p id="coll-summary" class="muted small"></p>
         <div id="coll-cards" class="card-grid"></div>
@@ -240,9 +243,10 @@
       <button id="btn-end" class="btn end-btn">Koniec tury</button>
     </div>
     <div class="hand" id="hand-me"></div>
-    <aside class="log" id="log"><div class="log-head"><b title="Kliknij, aby rozwinąć">📜 Dziennik</b><button id="btn-concede" class="btn danger small">Poddaj się</button></div><div id="log-body"></div></aside>
+    <aside class="log" id="log"><div class="log-head"><b title="Kliknij, aby rozwinąć">📜 Dziennik</b><span class="row" style="gap:4px"><button class="btn ghost small btn-mute" type="button">🔊</button><button id="btn-concede" class="btn danger small">Poddaj się</button></span></div><div id="log-body"></div></aside>
   </div>
   <div id="hint" class="hint"></div>
+  <div id="turn-splash" class="turn-splash"></div>
   <div id="opp-left" class="opp-left hidden"><span id="opp-left-text"></span> <button id="btn-claim" class="btn gold small">Odbierz walkower</button></div>
   <div id="played" class="played hidden"></div>
 </section>

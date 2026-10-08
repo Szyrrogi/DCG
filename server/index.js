@@ -535,7 +535,14 @@ function handle(ws, msg) {
 async function main() {
   await loadDb();
   const app = express();
-  app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: '1h' }));
+  // HTML/JS/CSS zawsze sprawdzane na serwerze (po aktualizacji gracze od razu mają nową wersję),
+  // obrazki mogą leżeć w pamięci przeglądarki dłużej
+  app.use(express.static(path.join(__dirname, '..', 'public'), {
+    setHeaders(res, file) {
+      if (/\.(html|js|css)$/.test(file)) res.setHeader('Cache-Control', 'no-cache');
+      else res.setHeader('Cache-Control', 'public, max-age=86400');
+    },
+  }));
   app.get('/health', (_req, res) => res.send('ok'));
   // lista kont na ekran logowania
   app.get('/api/cards', (_req, res) => res.json(PUBLIC_CARDS.map(c => ({ name: c.name, art: c.art }))));

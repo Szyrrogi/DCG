@@ -164,6 +164,7 @@ function onMsg(m) {
     case 'deckSaved': if (S.edit) { S.edit.id = m.id; } toast('Talia zapisana.'); closeEditor(); break;
     case 'toast': toast(m.msg); break;
     case 'error': toast(m.msg, true); break;
+    case 'spectateEnd': onSpectateEnd(m); break;
     case 'kicked': store.set('dcg_token', null); S.me = null; S.ws = null; show('login'); $('#login-error').textContent = m.msg; break;
   }
 }
@@ -301,7 +302,9 @@ function renderLobby() {
     if (isMe) btn = '<span class="muted small">to Ty</span>';
     else if (incoming) btn = `<button class="btn gold small" data-accept="${p.id}">Przyjmij wyzwanie</button>`;
     else if (myOut && myOut.to === p.id) btn = `<button class="btn ghost small" data-cancel="1">Anuluj wyzwanie</button>`;
-    else btn = `<button class="btn small" data-challenge="${p.id}" ${!p.online || p.inGame || myOut ? 'disabled' : ''}>Wyzwij</button>`;
+    else if (p.inGame) btn = `<button class="btn small" data-watch="${p.id}" title="${p.opponent ? 'gra z ' + esc(p.opponent) : ''}">👀 Oglądaj</button>`;
+    else btn = `<button class="btn small" data-challenge="${p.id}" ${!p.online || myOut ? 'disabled' : ''}>Wyzwij</button>`;
+    if (p.inGame && p.opponent) status += ` z ${esc(p.opponent)}${p.watchers ? ` · 👀 ${p.watchers}` : ''}`;
     const beaten = S.me.defeated.includes(p.id) ? ' <span class="gold-t small" title="Pokonany w tej serii">✔</span>' : '';
     return `<div class="player-row ${isMe ? 'me' : ''}">${avImg(p.avatar)}<div class="info"><div class="name">${esc(p.username)}${beaten}</div><div class="small muted">${status} · ${p.stats.wins}W / ${p.stats.losses}P</div></div>${btn}</div>`;
   }).join('');
@@ -311,6 +314,7 @@ function renderLobby() {
     send({ t: 'challenge', to: b.dataset.challenge, deckId });
   });
   $$('[data-cancel]').forEach(b => b.onclick = () => send({ t: 'cancelChallenge' }));
+  $$('[data-watch]').forEach(b => b.onclick = () => send({ t: 'spectate', userId: b.dataset.watch }));
   $$('[data-accept]').forEach(b => b.onclick = () => { const p = players.find(x => x.id === b.dataset.accept); showChallenge(p.id, p.username); });
 
   // bonus
@@ -319,6 +323,16 @@ function renderLobby() {
     const d = S.me.defeated.includes(p.id);
     return `<div class="slot ${d ? 'done' : ''}">${avImg(p.avatar)}<div>${esc(p.username)}</div><div>${d ? '✔ pokonany' : '—'}</div></div>`;
   }).join('') + `<div class="slot" style="align-self:center;font-size:14px"><b class="gold-t">${S.me.defeated.length}/${S.me.rules.bonusDistinct}</b></div>`;
+  const co = (S.me.rules.cashOut || {})[S.me.defeated.length];
+  $('#cashout').innerHTML = co
+    ? `<button class="btn gold" id="btn-cashout">💰 Wypłać teraz ${co} złota</button><span class="muted small">albo graj dalej po pełne ${S.me.rules.bonusGold}. Wypłata resetuje serię.</span>`
+    : `<span class="muted small">Wcześniejsza wypłata: przy 3/5 – ${(S.me.rules.cashOut || {})[3] || 30} złota, przy 4/5 – ${(S.me.rules.cashOut || {})[4] || 60} złota.</span>`;
+  const cb = $('#btn-cashout');
+  if (cb) cb.onclick = () => {
+    const box = modal(`<h2>Wypłacić ${co} złota?</h2><p class="muted">Seria pokonanych (${S.me.defeated.length}/5) zacznie się od nowa.</p><div class="row center"><button class="btn gold" id="co-yes">Wypłać</button><button class="btn ghost" id="co-no">Gram dalej</button></div>`);
+    box.querySelector('#co-yes').onclick = () => { send({ t: 'cashOut' }); closeModal(); };
+    box.querySelector('#co-no').onclick = closeModal;
+  };
 
   // ranking
   $('#rank-body').innerHTML = players.slice().sort((a, b) => b.stats.wins - a.stats.wins || a.stats.losses - b.stats.losses)
@@ -828,8 +842,9 @@ function animateAfter(v, prev, first, fast) {
 
   // początek tury
   if (v.phase === 'play' && ((prev && (prev.myTurn !== v.myTurn || prev.phase !== v.phase)) || first)) {
-    if (!v.over) turnBanner(v.myTurn ? 'TWOJA TURA' : `Tura: ${v.opp.name}`, v.myTurn);
+    if (!v.over && !v.spectator) turnBanner(v.myTurn ? 'TWOJA TURA' : `Tura: ${v.opp.name}`, v.myTurn);
   }
+  if (v.spectator && v.phase === 'play' && !v.over && (first || !prev || prev.currentSeat !== v.currentSeat || prev.phase !== v.phase)) turnBanner(`Tura: ${v.currentName}`, false);
 }
 
 function animateDraw(el, delay) {
@@ -924,8 +939,10 @@ function renderGame() {
   const canAct = v.myTurn && !v.over && !v.pending;
   $('#hero-opp').innerHTML = heroHtml(op, false);
   $('#hero-me').innerHTML = heroHtml(me, true);
-  $('#hero-opp').classList.toggle('active-turn', !v.myTurn && !v.over);
-  $('#hero-me').classList.toggle('active-turn', v.myTurn && !v.over);
+  const meTurn = v.spectator ? v.currentSeat === 0 : v.myTurn;
+  $('#hero-opp').classList.toggle('active-turn', v.phase === 'play' && !meTurn && !v.over);
+  $('#hero-me').classList.toggle('active-turn', v.phase === 'play' && meTurn && !v.over);
+  $('.battle').classList.toggle('spectating', !!v.spectator);
   $('#hero-me').classList.toggle('low', me.hp <= 6 && !v.over);
   $('#hero-opp').classList.toggle('low', op.hp <= 6 && !v.over);
   $('#hero-opp').classList.toggle('target', isValidTarget('hero', v));
@@ -936,7 +953,10 @@ function renderGame() {
   $('#me-pile').innerHTML = pile(me, '');
   $('#mana-opp').innerHTML = manaHtml(op, false, false);
   $('#mana-me').innerHTML = manaHtml(me, true, canAct && !me.manaActionUsed);
-  $('#opp-hand').innerHTML = '<div class="cardback"></div>'.repeat(op.handCount);
+  $('#opp-hand').innerHTML = v.spectator && op.hand
+    ? op.hand.map(c => cardHtml(c.name, { cost: c.cost, attrs: `data-uid="${c.uid}"` })).join('')
+    : '<div class="cardback"></div>'.repeat(op.handCount);
+  if (v.spectator) $$('#opp-hand .card').forEach(el => attachPreview(el, el.dataset.name));
   $('#board-opp').innerHTML = op.board.map(u => unitHtml(u, false, v)).join('');
   $('#board-me').innerHTML = me.board.map(u => unitHtml(u, true, v)).join('');
   const n = me.hand.length;
@@ -946,18 +966,20 @@ function renderGame() {
   renderMulligan(v);
   renderChoice(v);
   const tb = $('#turn-banner');
-  tb.textContent = v.over ? 'KONIEC GRY' : v.myTurn ? 'TWOJA TURA' : `TURA: ${op.name}`;
+  tb.textContent = v.over ? 'KONIEC GRY' : v.spectator ? (v.phase === 'mulligan' ? 'WYMIANA KART' : `👀 TURA: ${v.currentName}`) : v.myTurn ? 'TWOJA TURA' : `TURA: ${op.name}`;
   tb.classList.toggle('mine', v.myTurn && !v.over);
   const end = $('#btn-end');
   end.disabled = !canAct;
   end.classList.toggle('mine', canAct);
   end.textContent = canAct ? 'Koniec tury' : 'Tura przeciwnika';
+  if (v.spectator) { end.disabled = false; end.textContent = 'Wyjdź z oglądania'; }
   const anyMove = canAct && (me.hand.some(c => c.playable) || me.board.some(u => u.canAttack) || (!me.manaActionUsed && ['T', 'W', 'B'].some(c => me.mana[c].lvl < 4)));
   end.classList.toggle('nomoves', canAct && !anyMove);
   $('#hand-me').classList.toggle('their-turn', !canAct);
   $('#log-body').innerHTML = v.log.map(l => `<div>${esc(l)}</div>`).join('');
   $('#log-body').scrollTop = 1e6;
   $('#btn-concede').disabled = v.over;
+  $('#btn-concede').classList.toggle('hidden', !!v.spectator);
 
   // zdarzenia
   $$('#mana-me [data-mana]').forEach(b => b.onclick = e => { e.stopPropagation(); act({ type: 'mana', city: b.dataset.mana }); });
@@ -983,6 +1005,7 @@ function updateHint() {
   const v = S.view, pd = v && v.pending;
   if (pd && pd.mine && pd.type === 'discard') t = S.sel && S.sel.kind === 'discard' ? 'Kliknij kartę ponownie, aby ją odrzucić' : `Wybierz kartę do odrzucenia${pd.count > 1 ? ` (jeszcze ${pd.count})` : ''}`;
   else if (pd && pd.mine && pd.type === 'resurrect') t = 'Wybierz jednostkę do wskrzeszenia';
+  else if (v && v.spectator) t = v.phase === 'mulligan' ? '👀 Gracze wymieniają karty startowe…' : pd ? `👀 ${pd.who || 'Gracz'} wybiera…` : '';
   else if (pd && !pd.mine) t = pd.type === 'discard' ? 'Przeciwnik wybiera kartę do odrzucenia…' : 'Przeciwnik wybiera jednostkę do wskrzeszenia…';
   else if (S.sel && S.sel.kind === 'attacker') t = v && v.opp.board.some(x => x.taunt) ? 'Najpierw musisz zaatakować jednostkę z Prowokacją 🛡' : 'Wybierz cel ataku: wrogą jednostkę lub bohatera';
   else if (S.sel && S.sel.kind === 'spell') t = S.sel.any ? 'Wybierz cel: wrogą jednostkę lub bohatera' : 'Wybierz wrogą jednostkę';
@@ -991,6 +1014,7 @@ function updateHint() {
 }
 
 function onHandClick(uid) {
+  if (S.view && S.view.spectator) return;
   const v = S.view; if (!v || v.over) return;
   const card = v.me.hand.find(c => c.uid === uid);
   const data = S.byName[card.name];
@@ -1042,6 +1066,7 @@ function showPay(card, cost, rest, done) {
   draw();
 }
 function onMyUnitClick(uid) {
+  if (S.view && S.view.spectator) return;
   const v = S.view; if (!v || v.over) return;
   const u = v.me.board.find(x => x.uid === uid);
   if (TOUCH && !(S.sel && S.sel.uid === uid) && !(v.myTurn && u.canAttack)) { showTouchPreview(u.name); return; }
@@ -1051,6 +1076,7 @@ function onMyUnitClick(uid) {
   renderGame();
 }
 function onEnemyClick(target) {
+  if (S.view && S.view.spectator) return;
   const v = S.view; if (!v) return;
   if (S.sel && S.sel.kind === 'attacker') {
     const taunts = v.opp.board.filter(x => x.taunt);
@@ -1069,7 +1095,22 @@ function showTouchPreview(name) {
   showTouchPreview.t = setTimeout(hidePreview, 2500);
 }
 $('#scr-game').addEventListener('click', () => { if (S.sel) { S.sel = null; hidePreview(); renderGame(); } });
-$('#btn-end').onclick = e => { e.stopPropagation(); S.sel = null; act({ type: 'end' }); };
+$('#btn-end').onclick = e => {
+  e.stopPropagation(); S.sel = null;
+  if (S.view && S.view.spectator) { leaveSpectate(); return; }
+  act({ type: 'end' });
+};
+function leaveSpectate() {
+  send({ t: 'stopSpectate' });
+  S.view = null; closeModal(); show('hub'); setTab('play');
+}
+function onSpectateEnd(m) {
+  if (!S.view || !S.view.spectator) return;
+  setTimeout(() => {
+    const box = modal(`<div class="big win">Koniec gry</div><p><b>${esc(m.winner)}</b> pokonał(a) <b>${esc(m.loser)}</b>${m.reason === 'concede' ? ' (poddanie)' : m.reason === 'forfeit' ? ' (walkower)' : ''}.</p><button class="btn gold" id="go-lobby">Wróć do menu</button>`);
+    box.querySelector('#go-lobby').onclick = () => { closeModal(); S.view = null; show('hub'); setTab('play'); };
+  }, 900);
+}
 $('#btn-concede').onclick = e => {
   e.stopPropagation();
   const box = modal('<h2>Poddać się?</h2><p class="muted">Przeciwnik dostanie zwycięstwo i złoto.</p><div class="row center"><button class="btn danger" id="cq-yes">Poddaję się</button><button class="btn ghost" id="cq-no">Gram dalej</button></div>');
@@ -1082,18 +1123,27 @@ if (innerWidth <= 1100) $('#log').classList.add('collapsed');
 // ---------- wymiana kart startowych ----------
 function renderMulligan(v) {
   const box = $('#mulligan');
-  if (v.phase !== 'mulligan' || v.over) { box.classList.add('hidden'); return; }
+  if (v.phase !== 'mulligan' || v.over || v.spectator) { box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
   const done = v.mulligan && v.mulligan.me;
   if (!S.mullSel) S.mullSel = new Set();
-  $('#mull-cards').innerHTML = v.me.hand.map(c => `<div class="mull-card ${!done && S.mullSel.has(c.uid) ? 'swap' : ''}" data-uid="${c.uid}">${cardHtml(c.name)}<span class="x">✕ wymień</span></div>`).join('');
+  // aktualizujemy karty na miejscu – istniejące zostają, animują się tylko nowe (bez migania przy każdej zmianie)
+  const wrap = $('#mull-cards');
+  const existing = new Map([...wrap.children].map(el => [el.dataset.uid, el]));
+  const nodes = v.me.hand.map(c => {
+    let el = existing.get(c.uid);
+    if (!el) { el = document.createElement('div'); el.className = 'mull-card'; el.dataset.uid = c.uid; el.innerHTML = `${cardHtml(c.name)}<span class="x">✕ wymień</span>`; }
+    el.classList.toggle('swap', !done && S.mullSel.has(c.uid));
+    return el;
+  });
+  if (nodes.length !== wrap.children.length || nodes.some((n, k) => wrap.children[k] !== n)) wrap.replaceChildren(...nodes);
   $('#mull-title').textContent = done ? 'Twoja ręka startowa' : 'Wymiana kart startowych';
   $('#mull-help').textContent = done ? '' : 'Kliknij karty, których nie chcesz – dostaniesz zamiast nich nowe z talii.';
   const btn = $('#btn-mull');
   btn.classList.toggle('hidden', !!done);
   btn.textContent = S.mullSel.size ? `Wymień ${S.mullSel.size} i graj` : 'Zostaw rękę i graj';
   $$('#mull-cards .mull-card').forEach(el => {
-    el.onclick = e => { e.stopPropagation(); if (done) return; const u = el.dataset.uid; S.mullSel.has(u) ? S.mullSel.delete(u) : S.mullSel.add(u); SFX.play('click'); renderMulligan(S.view); };
+    el.onclick = e => { e.stopPropagation(); if (S.view.mulligan && S.view.mulligan.me) return; const u = el.dataset.uid; S.mullSel.has(u) ? S.mullSel.delete(u) : S.mullSel.add(u); SFX.play('click'); renderMulligan(S.view); };
   });
   clearInterval(S.mullTimer);
   const tick = () => {

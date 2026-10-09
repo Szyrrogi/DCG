@@ -77,6 +77,7 @@ class Game {
 
   start() {
     for (let k = 0; k < START_HAND; k++) { this.draw(0); this.draw(1); }
+    this.draw(this.opp(this.current));   // gracz, który nie zaczyna, dostaje 4. kartę
     this.say(`Zaczyna ${this.players[this.current].name}. Wymiana kart startowych…`);
   }
 
@@ -651,7 +652,7 @@ class Game {
       };
     };
     return {
-      id: this.id, seq: this.seq, turnNo: this.turnNo, mySeat: i,
+      id: this.id, seq: this.seq, turnNo: this.turnNo, mySeat: i, currentSeat: this.current,
       myTurn: this.phase === 'play' && this.current === i, over: this.over,
       phase: this.phase, mulliganEndsAt: this.mulliganEndsAt || null,
       mulligan: this.phase === 'mulligan' ? { me: this.mulliganDone[i], opp: this.mulliganDone[this.opp(i)] } : null,
@@ -667,5 +668,19 @@ class Game {
     };
   }
 }
+
+// widok dla obserwatora: wszystko jak u gracza 0, ale widać karty w rękach obu graczy
+Game.prototype.spectatorView = function () {
+  const v = this.view(0);
+  const handOf = pi => this.players[pi].hand.map(c => ({ uid: c.uid, name: c.name, cost: this.effectiveCost(pi, c), playable: false }));
+  v.spectator = true;
+  v.myTurn = false;
+  v.me.hand = handOf(0);
+  v.opp.hand = handOf(1);
+  if (v.pending) v.pending = { mine: false, type: v.pending.type || this.pending.type, who: this.players[this.pending.player].name };
+  v.mulligan = this.phase === 'mulligan' ? { me: this.mulliganDone[0], opp: this.mulliganDone[1] } : null;
+  v.currentName = this.players[this.current].name;
+  return v;
+};
 
 module.exports = { Game, GameError, CARDS, BY_NAME, START_HP, HAND_LIMIT, BOARD_LIMIT };

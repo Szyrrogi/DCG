@@ -41,10 +41,10 @@ test('wszystkie efekty kart są obsługiwane', () => {
   for (const c of CARDS) assert(known.includes(c.effect), 'brak efektu ' + c.effect);
 });
 
-test('start: 3 karty + dobranie w turze pierwszego gracza', () => {
+test('start: zaczynający 3 karty + dobranie, drugi gracz 4 karty', () => {
   const g = newGame();
   assert.strictEqual(g.players[g.current].hand.length, 4);
-  assert.strictEqual(g.players[1 - g.current].hand.length, 3);
+  assert.strictEqual(g.players[1 - g.current].hand.length, 4);
 });
 
 test('mana: jedna rozbudowa na turę, koszty 1,1,2,2', () => {
@@ -108,11 +108,13 @@ test('mulligan: wymienione karty wracają do talii, gra startuje po obu graczach
   g.start();
   assert.strictEqual(g.phase, 'mulligan');
   assert.throws(() => g.action(g.current, { type: 'end' }), /wymiana/i);
+  const n0 = g.players[0].hand.length;
+  assert.strictEqual(n0, g.current === 0 ? 3 : 4);
   const h = g.players[0].hand.slice(0, 2).map(c => c.uid);
   g.action(0, { type: 'mulligan', uids: h });
-  assert.strictEqual(g.players[0].hand.length, 3);
+  assert.strictEqual(g.players[0].hand.length, n0);
   assert(!g.players[0].hand.some(c => h.includes(c.uid)));
-  assert.strictEqual(g.players[0].deck.length, 17);
+  assert.strictEqual(g.players[0].deck.length, 20 - n0);
   assert.strictEqual(g.phase, 'mulligan');
   g.action(1, { type: 'mulligan', uids: [] });
   assert.strictEqual(g.phase, 'play');
@@ -438,6 +440,15 @@ test('wskrzeszona jednostka używa Okrzyku Bojowego', () => {
   g.action(i, { type: 'play', uid: put(g, i, 'Agnieszka').uid });
   assert(p.board.some(u => u.name === 'Yeager'));
   assert.strictEqual(p.hp, 13);
+});
+
+test('widok obserwatora pokazuje ręce obu graczy', () => {
+  const g = newGame();
+  const v = g.spectatorView();
+  assert(v.spectator);
+  assert.strictEqual(v.me.hand.length, g.players[0].hand.length);
+  assert.strictEqual(v.opp.hand.length, g.players[1].hand.length);
+  assert(!v.me.hand.some(c => c.playable));
 });
 
 console.log(`\nWszystkie testy zaliczone (${passed}).`);

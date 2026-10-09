@@ -496,3 +496,13 @@ table.admin { width: 100%; border-collapse: collapse; }
 .pay-row .mana-ic { width: 26px; height: 26px; border-radius: 50%; }
 .pay-n { text-align: center; font-weight: 800; font-size: 18px; color: var(--gold); }
 @media (max-width: 560px) { .modal-box.pay-box { flex-direction: column; } .pay-card { --cw: 130px; } }
+
+/* ================= wypłata, obserwator ================= */
+.cashout { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: -6px 0 16px; }
+.battle.spectating .opp-hand { display: flex !important; --cw: 96px; position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 4; max-width: calc(100vw - 480px); padding-bottom: 4px; }
+.battle.spectating .opp-hand .card { margin-left: -14px; flex-shrink: 0; }
+.battle.spectating .opp-hand .card:first-child { margin-left: 0; }
+.battle.spectating .hand .card { cursor: default; }
+.battle.spectating .end-btn { background: linear-gradient(#5a4029, #3b281a); color: var(--text); animation: none; }
+@media (max-width: 1100px) { .battle.spectating .opp-hand { max-width: calc(100vw - 200px); --cw: 80px; } }
+@media (max-width: 720px) { .battle.spectating .opp-hand { --cw: 58px; top: 90px; max-width: 96vw; } }

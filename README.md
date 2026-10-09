@@ -40,7 +40,7 @@ rozjazdów jak przy synchronizacji Photonem. Działa na komputerze i telefonie.
   wszystkie 41 kart i ich efekty z `CardEffects.cs`/`PassiveEffectsManager.cs`.
   Klik na kartę w ręce = zagranie, klik na swoją jednostkę → klik na cel = atak.
   Na telefonie pierwsze stuknięcie pokazuje kartę, drugie ją zagrywa.
-- **Mulligan**: na starcie każdy widzi 3 karty i klika te, które chce wymienić (40 s, potem gra
+- **Mulligan**: na starcie zaczynający widzi 3 karty, a drugi gracz 4 i klika te, które chce wymienić (40 s, potem gra
   rusza sama). Wymienione karty wracają do talii.
 - **Odrzucanie**: gdy karta każe odrzucić Twoją kartę (Błażej, Grzesiek, Diss na Szymona), sam
   wybierasz którą – kliknij ją dwa razy. Julka (przeciwnik odrzuca) dalej działa losowo.
@@ -52,6 +52,10 @@ rozjazdów jak przy synchronizacji Photonem. Działa na komputerze i telefonie.
 - **Prowokacja** (Ramus, Bedoes z Tarczą): dopóki przeciwnik ma jednostkę z Prowokacją, ataki muszą iść w nią.
   Piosenki ją ignorują. **Kayle**: dopóki jest na planszy, Twój bohater nie otrzymuje obrażeń.
 - Odrzucone jednostki trafiają na cmentarz jako polegli – Agnieszka może je wskrzesić.
+- **Wcześniejsza wypłata bonusu**: przy 3/5 pokonanych możesz wypłacić 30 złota, przy 4/5 – 60 złota
+  (przycisk w zakładce Graj). Wypłata resetuje serię.
+- **Tryb obserwatora**: przy graczu, który gra, jest przycisk „👀 Oglądaj”. Widzisz wtedy planszę i karty
+  w rękach obu graczy; gracze dostają informację, że ktoś ogląda.
 - Rozłączenie w trakcie gry nie kończy meczu – wystarczy odświeżyć stronę.
   Jeśli przeciwnik nie wróci przez 60 s, możesz odebrać walkower.
 

@@ -31,6 +31,8 @@ const ADMINS = (process.env.ADMINS || 'szyrrogi').split(',').map(s => norm(s)).f
 const MAX_ACCOUNTS = 60;
 const FACES = 9;
 const MAX_OFFERS_PER_USER = 10;
+// wcześniejsza wypłata bonusu: przy 3/5 pokonanych 30 złota, przy 4/5 – 60 złota (potem seria od nowa)
+const CASH_OUT = { 3: 30, 4: 60 };
 // Wytwarzanie (jak w Hearthstone): rozbijanie kart na pył i tworzenie wybranych kart z pyłu
 const DUST = {
   disenchant: { 1: 5, 2: 20, 3: 100 },   // ile pyłu daje rozbicie
@@ -103,7 +105,7 @@ function publicProfile(u) {
   return {
     id: u.id, username: u.username, avatar: u.avatar, gold: u.gold, dust: u.dust, packs: u.packs,
     collection: u.collection, decks: u.decks, defeated: u.defeated, stats: u.stats, isAdmin: isAdmin(u),
-    rules: { winGold: WIN_GOLD, bonusGold: BONUS_GOLD, bonusDistinct: BONUS_DISTINCT, deckSize: DECK_SIZE, packs: PACKS, dust: DUST },
+    rules: { winGold: WIN_GOLD, bonusGold: BONUS_GOLD, bonusDistinct: BONUS_DISTINCT, deckSize: DECK_SIZE, packs: PACKS, dust: DUST, cashOut: CASH_OUT },
   };
 }
 
@@ -204,6 +206,7 @@ const games = new Map();      // gameId -> Game
 const userGame = new Map();   // userId -> gameId
 const challenges = new Map(); // fromId -> { to, deckId, at }
 const offlineSince = new Map();
+const spectators = new Map(); // gameId -> Set(userId) obserwatorów
 
 function send(ws, msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 function sendTo(userId, msg) { send(sockets.get(userId), msg); }
@@ -213,6 +216,8 @@ function lobbyState() {
   return db.users.map(u => ({
     id: u.id, username: u.username, avatar: u.avatar, online: sockets.has(u.id),
     inGame: userGame.has(u.id), stats: u.stats, gold: u.gold, defeatedCount: u.defeated.length,
+    watchers: userGame.has(u.id) ? (spectators.get(userGame.get(u.id)) || new Set()).size : 0,
+    opponent: userGame.has(u.id) ? (games.get(userGame.get(u.id)) || { players: [] }).players.map(p => p.name).find(n => n !== u.username) || null : null,
   }));
 }
 function broadcastLobby() {
@@ -221,8 +226,17 @@ function broadcastLobby() {
   for (const [id, ws] of sockets) send(ws, { t: 'lobby', players, challenges: ch.filter(c => c.from === id || c.to === id), history: db.history.slice(-15).reverse() });
 }
 
+function spectatorOf(userId) {
+  for (const [gid, set] of spectators) if (set.has(userId)) return gid;
+  return null;
+}
+function stopSpectating(userId) {
+  for (const [gid, set] of spectators) { set.delete(userId); if (!set.size) spectators.delete(gid); }
+}
 function sendGame(g) {
   g.players.forEach((p, i) => sendTo(p.userId, { t: 'game', view: g.view(i) }));
+  const set = spectators.get(g.id);
+  if (set && set.size) { const sv = g.spectatorView(); for (const id of set) sendTo(id, { t: 'game', view: sv }); }
 }
 
 function startGame(aId, aDeck, bId, bDeck) {
@@ -238,6 +252,7 @@ function startGame(aId, aDeck, bId, bDeck) {
   setTimeout(() => { if (g.phase === 'mulligan' && !g.over) { g.autoMulligan(); sendGame(g); } }, 40_500);
   games.set(id, g);
   userGame.set(a.id, id); userGame.set(b.id, id);
+  stopSpectating(a.id); stopSpectating(b.id);
   for (const k of [...challenges.keys()]) {
     const c = challenges.get(k);
     if ([a.id, b.id].includes(k) || [a.id, b.id].includes(c.to)) challenges.delete(k);
@@ -265,6 +280,8 @@ function settleGame(g) {
   sendTo(w.id, { t: 'gameOver', result: 'win', reward, opponent: l.username, reason: g.endReason });
   sendTo(l.id, { t: 'gameOver', result: 'loss', reward: { gold: 0, bonus: 0 }, opponent: w.username, reason: g.endReason });
   userGame.delete(w.id); userGame.delete(l.id);
+  for (const id of spectators.get(g.id) || []) sendTo(id, { t: 'spectateEnd', winner: w.username, loser: l.username, reason: g.endReason });
+  spectators.delete(g.id);
   setTimeout(() => games.delete(g.id), 10 * 60_000);
   sendMe(w); sendMe(l);
   broadcastLobby();
@@ -529,6 +546,28 @@ function handle(ws, msg) {
       }
       return send(ws, { t: 'adminUsers', users: db.users.map(x => ({ id: x.id, username: x.username, avatar: x.avatar, gold: x.gold, dust: x.dust, packs: x.packs, stats: x.stats, online: sockets.has(x.id), cards: Object.values(x.collection).reduce((a, b) => a + b, 0) })) });
     }
+    case 'cashOut': {
+      const n = u.defeated.length, gold = CASH_OUT[n];
+      if (!gold) return err('Wypłata jest możliwa przy 3/5 albo 4/5 pokonanych graczy.');
+      u.gold += gold; u.defeated = []; u.stats.cashOuts = (u.stats.cashOuts || 0) + 1;
+      scheduleSave(); sendMe(u); broadcastLobby();
+      return send(ws, { t: 'toast', msg: `Wypłacono ${gold} złota – seria zaczyna się od nowa.` });
+    }
+    case 'spectate': {
+      const target = userById(msg.userId);
+      const gid = target && userGame.get(target.id);
+      const g = gid && games.get(gid);
+      if (!g || g.over) return err('Ten gracz nie jest teraz w grze.');
+      if (userGame.has(u.id)) return err('Nie możesz oglądać, gdy sam grasz.');
+      stopSpectating(u.id);
+      if (!spectators.has(g.id)) spectators.set(g.id, new Set());
+      spectators.get(g.id).add(u.id);
+      send(ws, { t: 'game', view: g.spectatorView() });
+      for (const p of g.players) sendTo(p.userId, { t: 'toast', msg: `${u.username} ogląda Waszą grę 👀` });
+      broadcastLobby();
+      return;
+    }
+    case 'stopSpectate': stopSpectating(u.id); broadcastLobby(); return;
     case 'ping': return send(ws, { t: 'pong' });
     default: return err('Nieznana wiadomość.');
   }
@@ -566,6 +605,7 @@ async function main() {
         const id = ws.userId;
         sockets.delete(id);
         challenges.delete(id);
+        stopSpectating(id);
         offlineSince.set(id, Date.now());
         const gid = userGame.get(id);
         const g = gid && games.get(gid);

@@ -430,4 +430,14 @@ test('Szymon: 2/2 i 50% na +2/+1, statystyki SzyRRogi 2/9, Kubba moc +2', () => 
   assert.strictEqual(BY_NAME.SzyRRogi.atk, 2); assert.strictEqual(BY_NAME.SzyRRogi.hp, 9); assert.strictEqual(BY_NAME.Kubba.spellPower, 2);
 });
 
+test('wskrzeszona jednostka używa Okrzyku Bojowego', () => {
+  const g = newGame(); const i = g.current; const p = g.players[i];
+  giveMana(g, i);
+  const y = g.summon(i, g.newCard('Yeager'), { battlecry: false }); g.destroyUnit(i, y);
+  p.hp = 10;
+  g.action(i, { type: 'play', uid: put(g, i, 'Agnieszka').uid });
+  assert(p.board.some(u => u.name === 'Yeager'));
+  assert.strictEqual(p.hp, 13);
+});
+
 console.log(`\nWszystkie testy zaliczone (${passed}).`);

@@ -106,7 +106,7 @@ class Game {
     p.dead.splice(p.dead.indexOf(name), 1);
     const g = p.grave.lastIndexOf(name); if (g >= 0) p.grave.splice(g, 1);
     this.say(`Wskrzeszono ${name}!`);
-    this.summon(i, this.newCard(name), { battlecry: false, fromPlay: true });
+    this.summon(i, this.newCard(name), { battlecry: true, fromPlay: true });   // wskrzeszona jednostka też używa Okrzyku Bojowego
   }
   // rozwiązuje wybory, które nie wymagają decyzji; zatrzymuje się na pierwszym, który wymaga
   resolvePending() {

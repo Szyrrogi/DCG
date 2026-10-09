@@ -359,6 +359,11 @@ function cardHtml(name, o = {}) {
   return `<div class="${cls}" ${o.attrs || ''} data-name="${esc(name)}">${costHtml(o.cost || c.cost, c.cost)}${cnt}<div class="art" style="background-image:url('img/art/${c.art}')"></div>${tag}<div class="nm">${esc(c.name)}</div><div class="ds">${kw(c.desc)}</div>${stats}</div>`;
 }
 const totalCost = c => c.cost.T + c.cost.W + c.cost.B + c.cost.D;
+// kolejność „po koszcie”: grupy wg many miast (do 2, potem 3, potem 4), w grupie łączny koszt,
+// a przy równym – mana miast jest „droższa” od dowolnej
+const cityCost = c => c.cost.T + c.cost.W + c.cost.B;
+const cityGroup = c => Math.max(2, cityCost(c));
+const byCost = (a, b) => cityGroup(a) - cityGroup(b) || totalCost(a) - totalCost(b) || cityCost(a) - cityCost(b) || a.name.localeCompare(b.name, 'pl');
 // pogrubienie słów kluczowych w opisach kart
 const KEYWORDS = /(Okrzyk Bojowy|Szarża|Prowokacj\p{L}*|nie może otrzymywać obrażeń|zużytą kulę|Położenie|Moc pie[sś]ni(?: \+ ?\d+)?|Zamr[oó]ź\p{L}*|Wskrze[sś]\p{L}*|Odrzu[cć]\p{L}*|odrzucone|Dobierz|Przyzwij|Przywołaj|Zagraj|Zniszcz\p{L}*|Cofnij|cofnięcie|Zwiększ|piosen\p{L}*|informatyk\p{L}*|dziewczyn\p{L}*|Lewca?|dwa razy|Na koniec Twojej tury|podwójny atak|Po (?:dwóch|trzech) turach zniknij|Na początku Twojej tury|wybran\p{L}*|\d+%|\+\d+\/\+\d+|\+\d+ (?:ataku|zdrowia|HP)|\d+ obraże\p{L}*|\d+ zdrowia)/giu;
 const kw = text => esc(text).replace(KEYWORDS, '<b>$1</b>');
@@ -408,7 +413,7 @@ function filteredCards() {
     if (city && city !== 'N' && !c.cost[city]) return false;
     if (owned && !(S.me.collection[c.name] > 0)) return false;
     return true;
-  }).sort((a, b) => totalCost(a) - totalCost(b) || a.name.localeCompare(b.name, 'pl'));
+  }).sort(byCost);
 }
 
 function renderCollection() {
@@ -453,7 +458,7 @@ function renderDeckPanel() {
   if (document.activeElement !== $('#deck-name')) $('#deck-name').value = S.edit.name;
   $('#btn-deck-delete').classList.toggle('hidden', !S.edit.id);
   const cnt = countBy(S.edit.cards);
-  const rows = Object.keys(cnt).map(n => S.byName[n]).filter(Boolean).sort((a, b) => totalCost(a) - totalCost(b) || a.name.localeCompare(b.name, 'pl'));
+  const rows = Object.keys(cnt).map(n => S.byName[n]).filter(Boolean).sort(byCost);
   $('#deck-cards').innerHTML = rows.map(c => `<div class="deck-row r${c.rarity}" data-rm="${esc(c.name)}" style="--art:url('img/art/${c.art}')">${costHtml(c.cost).replace('class="cost"', 'class="c"')}<span class="n">${esc(c.name)}</span><span class="x">×${cnt[c.name]}</span></div>`).join('');
   const holes = size - S.edit.cards.length;
   if (holes > 0) $('#deck-cards').innerHTML = Array.from({ length: holes }, () => '<div class="deck-row hole"><span class="n">— puste miejsce —</span></div>').join('') + $('#deck-cards').innerHTML;

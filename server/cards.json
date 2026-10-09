@@ -105,8 +105,8 @@
   "effect": "Draw5Spells",
   "value": 5,
   "art": "Bedoes2115.webp",
-  "atk": 2,
-  "hp": 5,
+  "atk": 4,
+  "hp": 4,
   "tags": [],
   "spellPower": 0,
   "passive": "",
@@ -906,8 +906,8 @@
    "B": 0,
    "D": 2
   },
-  "atk": 4,
-  "hp": 4,
+  "atk": 2,
+  "hp": 2,
   "taunt": true,
   "art": "Ramus.png"
  },

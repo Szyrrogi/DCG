@@ -162,8 +162,14 @@ class Game {
     const d = this.data(card);
     const cost = { ...d.cost };
     if (d.type === 'spell') {
-      const discount = this.players[i].board.filter(u => this.data(u).passive === 'SongsDiscounted').length;
-      cost.D = Math.max(0, cost.D - discount);
+      // Tael: piosenki kosztują 1 mniej – najpierw z kosztu dowolnego, potem z kosztu miast
+      let discount = this.players[i].board.filter(u => this.data(u).passive === 'SongsDiscounted').length;
+      const fromD = Math.min(cost.D, discount); cost.D -= fromD; discount -= fromD;
+      while (discount > 0) {
+        const c = CITIES.slice().sort((a, b) => cost[b] - cost[a])[0];
+        if (cost[c] <= 0) break;
+        cost[c]--; discount--;
+      }
     }
     return cost;
   }
@@ -174,8 +180,21 @@ class Game {
     return rest >= cost.D;
   }
 
-  pay(p, cost) {
+  // choice: {T,W,B} – z których miast zapłacić koszt dowolny (wybór gracza); zły wybór = automatycznie
+  validPayChoice(p, cost, choice) {
+    if (!choice || typeof choice !== 'object') return false;
+    let sum = 0;
+    for (const c of CITIES) {
+      const n = choice[c] || 0;
+      if (!Number.isInteger(n) || n < 0 || n > this.available(p, c) - cost[c]) return false;
+      sum += n;
+    }
+    return sum === cost.D;
+  }
+  pay(p, cost, choice) {
+    const ok = this.validPayChoice(p, cost, choice);
     for (const c of CITIES) p.mana[c].used += cost[c];
+    if (ok) { for (const c of CITIES) p.mana[c].used += choice[c] || 0; return; }
     let need = cost.D;
     while (need > 0) {
       // płacimy "dowolną" z miasta, którego zostało najwięcej
@@ -253,8 +272,10 @@ class Game {
     this.fx.push({ type: 'dmg', id: unit.uid, amount });
   }
 
+  heroImmune(i) { return this.players[i].board.some(u => this.data(u).passive === 'HeroImmune'); }
   damageHero(i, amount) {
     if (amount <= 0) return;
+    if (this.heroImmune(i)) { this.fx.push({ type: 'immune', id: this.heroId(i) }); return; }   // Kayle
     this.players[i].hp -= amount;
     this.fx.push({ type: 'dmg', id: this.heroId(i), amount });
   }
@@ -308,6 +329,7 @@ class Game {
       return;
     }
     p.grave.push(card.name);
+    if (d.type === 'unit') p.dead.push(card.name);   // odrzucone jednostki można wskrzesić
     this.say(`${p.name} odrzuca ${card.name}.`);
   }
 
@@ -343,7 +365,7 @@ class Game {
       }
       case 'DestroyAllMinionsDiscardHand': {
         for (const pi of [0, 1]) for (const u of this.players[pi].board.slice()) if (u !== src) this.destroyUnit(pi, u);
-        for (const c of me.hand.slice()) { me.hand.splice(me.hand.indexOf(c), 1); me.grave.push(c.name); }
+        for (const c of me.hand.slice()) { me.hand.splice(me.hand.indexOf(c), 1); me.grave.push(c.name); if (this.data(c).type === 'unit') me.dead.push(c.name); }
         this.say(`Wszystkie inne jednostki zniszczone, ${me.name} odrzuca całą rękę.`);
         break;
       }
@@ -355,6 +377,20 @@ class Game {
         if (!progInHand()) { this.say('Brak informatyka w ręce – efekt nie działa.'); break; }
         for (const pi of [0, 1]) for (const u of this.players[pi].board) if (!this.hasTag(u, 'Informatyk')) this.damageUnit(u, value);
         this.say(`${value} obrażeń dla wszystkich poza informatykami.`);
+        break;
+      }
+      case 'ChanceBuff': {   // Szymon: 50% szans na +X/+Y
+        if (!src) break;
+        const hp = BY_NAME[src.name].valueHp != null ? BY_NAME[src.name].valueHp : value;
+        if (this.rng() < 0.5) { src.atk += value; src.hp += hp; src.maxHp += hp; this.fx.push({ type: 'buff', id: src.uid }); this.say(`${src.name} dostaje +${value}/+${hp}!`); }
+        else if (src) this.say(`${src.name} nie miał szczęścia.`);
+        break;
+      }
+      case 'DrawCards': this.draw(i, value); this.say(`${me.name} dobiera ${value} karty.`); break;
+      case 'DrawNamedCard': {   // Olaf: dobierz Agnieszkę
+        const name = BY_NAME[src ? src.name : ''] && BY_NAME[src.name].drawName;
+        const c = me.deck.find(c => c.name === name);
+        if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.toHand(i, c); this.say(`${me.name} dobiera ${c.name}.`); }
         break;
       }
       case 'ReturnToHandRandom':
@@ -380,15 +416,19 @@ class Game {
         break;
       }
       case 'OpponentDiscardsCard': this.discardRandom(o); break;
-      case 'DrawCardWithTag': {
+      case 'DrawCardWithTag': case 'DrawTwoWithTag': {
         const tag = TAG_BY_INDEX[value];
-        const c = me.deck.find(c => this.hasTag(c, tag));
-        if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.toHand(i, c); this.say(`${me.name} dobiera kartę (${tag}).`); }
+        for (let k = 0; k < (effect === 'DrawTwoWithTag' ? 2 : 1); k++) {
+          const c = me.deck.find(c => this.hasTag(c, tag));
+          if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.toHand(i, c); this.say(`${me.name} dobiera kartę (${tag}).`); }
+        }
         break;
       }
-      case 'DrawSpecificCard': {
-        const c = me.deck.find(c => ['Julii', 'Jędrek'].includes(c.name));
-        if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.toHand(i, c); this.say(`${me.name} dobiera ${c.name}.`); }
+      case 'DrawSpecificCard': {   // Jeżyk: dobiera i Julii, i Jędrka
+        for (const name of ['Julii', 'Jędrek']) {
+          const c = me.deck.find(c => c.name === name);
+          if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.toHand(i, c); this.say(`${me.name} dobiera ${c.name}.`); }
+        }
         break;
       }
       case 'Draw5Spells': {
@@ -425,11 +465,18 @@ class Game {
         for (const u of them.board) this.damageUnit(u, value);
         this.say(`${value} obrażeń dla wszystkich jednostek ${them.name}.`);
         break;
-      case 'DamageAndDiscard':
-        this.damageHero(o, value); this.say(`${them.name} otrzymuje ${value} obrażeń.`);
+      case 'DamageAndDiscard': {   // Diss na Szymona: wybrany wróg (jednostka albo bohater)
+        const t = target && target !== 'hero' ? them.board.find(u => u.uid === target) : null;
+        if (t) { this.damageUnit(t, value); this.say(`${t.name} otrzymuje ${value} obrażeń.`); }
+        else { this.damageHero(o, value); this.say(`${them.name} otrzymuje ${value} obrażeń.`); }
         this.pendingQueue.push({ player: i, type: 'discard', count: 1 });
         break;
-      case 'IncreaseBydgoszczMana': this.addManaProgress(me, 'B'); this.say(`${me.name} rozbudowuje Bydgoszcz.`); break;
+      }
+      case 'IncreaseBydgoszczMana': {   // Mordekaiser: gotowa, ale już zużyta kula Bydgoszczy
+        const m = me.mana.B;
+        if (m.lvl < 4) { m.lvl++; m.used++; this.say(`${me.name} dostaje zużytą kulę Bydgoszczy.`); }
+        break;
+      }
       case 'DiscardCardFromHand': this.pendingQueue.push({ player: i, type: 'discard', count: 1 }); break;
       case 'ReturnFriendlyToHand': {
         const t = this.pick(me.board.filter(u => u !== src));
@@ -521,7 +568,7 @@ class Game {
         const cost = this.effectiveCost(i, card);
         if (!this.canPay(p, cost)) throw new GameError('Nie stać Cię na tę kartę.');
         if (d.type === 'unit' && p.board.length >= BOARD_LIMIT) throw new GameError('Plansza jest pełna.');
-        this.pay(p, cost);
+        this.pay(p, cost, a.pay);
         p.hand.splice(p.hand.indexOf(card), 1);
         this.fx.push({ type: 'play', name: card.name, by: i });
         if (d.type === 'unit') {
@@ -531,7 +578,7 @@ class Game {
         } else {
           this.say(`${p.name} gra piosenkę ${card.name}.`);
           this.runEffect(d.effect, d.value, i, true, null, a.target);
-          for (const u of p.board) if (this.data(u).passive === 'BuffOnSpellCast') { u.atk++; this.fx.push({ type: 'buff', id: u.uid }); }
+          for (const u of p.board) if (this.data(u).passive === 'BuffOnSpellCast') { u.atk++; u.hp++; u.maxHp++; this.fx.push({ type: 'buff', id: u.uid }); }
           p.grave.push(card.name);
         }
         break;
@@ -541,6 +588,8 @@ class Game {
         if (!u) throw new GameError('Nie ma takiej jednostki.');
         if (u.attacksLeft <= 0) throw new GameError(u.frozen ? 'Jednostka jest zamrożona.' : 'Ta jednostka nie może teraz atakować.');
         const o = this.opp(i);
+        const taunts = this.players[o].board.filter(x => this.data(x).taunt);
+        if (taunts.length && !taunts.some(x => x.uid === a.target)) throw new GameError('Najpierw musisz zaatakować jednostkę z Prowokacją.');
         const atk = this.attackOf(i, u);
         if (a.target === 'hero') {
           this.damageHero(o, atk);
@@ -586,7 +635,8 @@ class Game {
     const unitView = (pi, u) => ({
       uid: u.uid, name: u.name, atk: this.attackOf(pi, u), hp: u.hp, maxHp: u.maxHp,
       baseAtk: BY_NAME[u.name].atk, baseHp: BY_NAME[u.name].hp,
-      canAttack: this.phase === 'play' && !this.pending && pi === this.current && u.attacksLeft > 0, attacksLeft: u.attacksLeft, frozen: u.frozen,
+      canAttack: this.phase === 'play' && !this.pending && pi === this.current && u.attacksLeft > 0,
+      taunt: !!BY_NAME[u.name].taunt, attacksLeft: u.attacksLeft, frozen: u.frozen,
       // ukryta zdolność (np. Gustav) – przeciwnik ani właściciel nie widzą licznika
       turnsLeft: BY_NAME[u.name].turnsUntilDeath > 0 && !BY_NAME[u.name].hiddenDeath ? BY_NAME[u.name].turnsUntilDeath - u.turnsAlive : null,
     });
@@ -597,7 +647,7 @@ class Game {
         deckCount: p.deck.length, handCount: p.hand.length, grave: p.grave.slice(),
         board: p.board.map(u => unitView(pi, u)),
         mana: JSON.parse(JSON.stringify(p.mana)), manaActionUsed: p.manaActionUsed,
-        spellPower: this.spellPower(pi),
+        spellPower: this.spellPower(pi), immune: this.heroImmune(pi),
       };
     };
     return {

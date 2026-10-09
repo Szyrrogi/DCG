@@ -69,7 +69,7 @@
  },
  {
   "name": "Alternatywka",
-  "desc": "Okrzyk Bojowy: Otrzymuje +1 ataku jeżeli masz w ręce informatyka",
+  "desc": "Okrzyk Bojowy: Otrzymuje +2 ataku, jeżeli masz w ręce informatyka",
   "rarity": 1,
   "cost": {
    "T": 0,
@@ -79,7 +79,7 @@
   },
   "type": "unit",
   "effect": "BuffIfProgrammerInHand",
-  "value": 1,
+  "value": 2,
   "art": "Alternatywka.webp",
   "atk": 1,
   "hp": 3,
@@ -178,7 +178,7 @@
  },
  {
   "name": "Diss na Szymona",
-  "desc": "Zadaj 4 obrażenia i odrzuć wybraną kartę",
+  "desc": "Zadaj 4 obrażenia wybranemu wrogowi i odrzuć wybraną kartę",
   "rarity": 1,
   "cost": {
    "T": 0,
@@ -189,7 +189,8 @@
   "type": "spell",
   "effect": "DamageAndDiscard",
   "value": 4,
-  "art": "Diss_na_Szymona.webp"
+  "art": "Diss_na_Szymona.webp",
+  "target": "enemyAny"
  },
  {
   "name": "Diss na taksówkarzy",
@@ -249,7 +250,7 @@
   "rarity": 1,
   "cost": {
    "T": 0,
-   "W": 2,
+   "W": 3,
    "B": 0,
    "D": 0
   },
@@ -327,7 +328,7 @@
  },
  {
   "name": "Jeżyk",
-  "desc": "Okrzyk Bojowy: Dobierz Julii lub Jędrka",
+  "desc": "Okrzyk Bojowy: Dobierz Julii i Jędrka",
   "rarity": 1,
   "cost": {
    "T": 0,
@@ -393,7 +394,7 @@
    "T": 2,
    "W": 0,
    "B": 0,
-   "D": 1
+   "D": 2
   },
   "type": "unit",
   "effect": "OpponentDiscardsCard",
@@ -417,7 +418,7 @@
    "T": 2,
    "W": 0,
    "B": 0,
-   "D": 1
+   "D": 2
   },
   "type": "unit",
   "effect": "BuffPerCardInHand",
@@ -435,7 +436,7 @@
  },
  {
   "name": "Kubba",
-  "desc": "Moc pieśni +1",
+  "desc": "Moc pieśni +2",
   "rarity": 1,
   "cost": {
    "T": 0,
@@ -450,7 +451,7 @@
   "atk": 2,
   "hp": 2,
   "tags": [],
-  "spellPower": 1,
+  "spellPower": 2,
   "passive": "",
   "charge": false,
   "turnsUntilDeath": -1
@@ -503,7 +504,7 @@
  },
  {
   "name": "Moja Przygoda (Remix)",
-  "desc": "Zadaj obu bohaterom 5 obrażeń",
+  "desc": "Zadaj obu bohaterom 4 obrażenia",
   "rarity": 1,
   "cost": {
    "T": 0,
@@ -513,18 +514,18 @@
   },
   "type": "spell",
   "effect": "DamageBothHeroes",
-  "value": 5,
+  "value": 4,
   "art": "Moja_Przygoda_Remix.webp"
  },
  {
   "name": "Mordekaiser",
-  "desc": "Zwiększ Bydgoszcz o 1",
+  "desc": "Okrzyk Bojowy: Dostajesz zużytą kulę Bydgoszczy",
   "rarity": 1,
   "cost": {
    "T": 1,
    "W": 1,
    "B": 0,
-   "D": 1
+   "D": 2
   },
   "type": "unit",
   "effect": "IncreaseBydgoszczMana",
@@ -578,7 +579,7 @@
  },
  {
   "name": "Ola z kajaków",
-  "desc": "Po trzech turach zniknij",
+  "desc": "Po dwóch turach zniknij",
   "rarity": 1,
   "cost": {
    "T": 0,
@@ -598,11 +599,11 @@
   "spellPower": 0,
   "passive": "",
   "charge": false,
-  "turnsUntilDeath": 3
+  "turnsUntilDeath": 2
  },
  {
   "name": "Olaf",
-  "desc": "Gdy Agnieszka jest na planszy, ma podwójny atak",
+  "desc": "Okrzyk Bojowy: Dobierz Agnieszkę. Gdy Agnieszka jest na planszy, ma podwójny atak",
   "rarity": 3,
   "cost": {
    "T": 4,
@@ -611,7 +612,7 @@
    "D": 0
   },
   "type": "unit",
-  "effect": "",
+  "effect": "DrawNamedCard",
   "value": 5,
   "art": "Olaf.webp",
   "atk": 4,
@@ -620,14 +621,15 @@
   "spellPower": 0,
   "passive": "DoubleAttackIfAgnieszka",
   "charge": false,
-  "turnsUntilDeath": -1
+  "turnsUntilDeath": -1,
+  "drawName": "Agnieszka"
  },
  {
   "name": "Runia",
-  "desc": "+1 Ataku za każdą zagraną piosenkę",
+  "desc": "+1/+1 za każdą zagraną piosenkę",
   "rarity": 1,
   "cost": {
-   "T": 1,
+   "T": 2,
    "W": 0,
    "B": 0,
    "D": 0
@@ -648,7 +650,7 @@
  },
  {
   "name": "Siostra Kirszenstein",
-  "desc": "Okrzyk Bojowy: Dobierz Lewca",
+  "desc": "Okrzyk Bojowy: Dobierz dwóch Lewców",
   "rarity": 1,
   "cost": {
    "T": 0,
@@ -657,7 +659,7 @@
    "D": 1
   },
   "type": "unit",
-  "effect": "DrawCardWithTag",
+  "effect": "DrawTwoWithTag",
   "value": 2,
   "art": "Siostra_Kirszenstein.webp",
   "atk": 1,
@@ -706,8 +708,8 @@
   "effect": "",
   "value": 0,
   "art": "SzyRRogi.webp",
-  "atk": 1,
-  "hp": 8,
+  "atk": 2,
+  "hp": 9,
   "tags": [
    "Informatyk"
   ],
@@ -718,7 +720,7 @@
  },
  {
   "name": "Szymon",
-  "desc": "Okrzyk Bojowy: Ma 50% na cofnięcie do ręki",
+  "desc": "Okrzyk Bojowy: 50% szans na +2/+1",
   "rarity": 2,
   "cost": {
    "T": 2,
@@ -727,18 +729,19 @@
    "D": 0
   },
   "type": "unit",
-  "effect": "ReturnToHandRandom",
-  "value": 5,
+  "effect": "ChanceBuff",
+  "value": 2,
   "art": "Szymon.webp",
-  "atk": 4,
-  "hp": 4,
+  "atk": 2,
+  "hp": 2,
   "tags": [
    "Lewc"
   ],
   "spellPower": 0,
   "passive": "",
   "charge": false,
-  "turnsUntilDeath": -1
+  "turnsUntilDeath": -1,
+  "valueHp": 1
  },
  {
   "name": "Tael",
@@ -816,7 +819,7 @@
    "T": 0,
    "W": 1,
    "B": 0,
-   "D": 1
+   "D": 2
   },
   "type": "spell",
   "effect": "FreezeAllEnemies",
@@ -869,5 +872,88 @@
   "charge": false,
   "turnsUntilDeath": -1,
   "endsTurn": true
+ },
+ {
+  "name": ":pp",
+  "desc": "Dobierz 2 karty",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 2
+  },
+  "type": "spell",
+  "effect": "DrawCards",
+  "value": 2,
+  "art": "pp.png"
+ },
+ {
+  "type": "unit",
+  "tags": [],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1,
+  "value": 0,
+  "effect": "",
+  "name": "Ramus",
+  "desc": "Prowokacja",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 2
+  },
+  "atk": 4,
+  "hp": 4,
+  "taunt": true,
+  "art": "Ramus.png"
+ },
+ {
+  "type": "unit",
+  "tags": [],
+  "spellPower": 0,
+  "passive": "",
+  "charge": false,
+  "turnsUntilDeath": -1,
+  "value": 0,
+  "effect": "",
+  "name": "Bedoes z Tarczą",
+  "desc": "Prowokacja",
+  "rarity": 1,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 2,
+   "D": 1
+  },
+  "atk": 3,
+  "hp": 3,
+  "taunt": true,
+  "art": "Bedoes_z_Tarcza.png"
+ },
+ {
+  "type": "unit",
+  "tags": [],
+  "spellPower": 0,
+  "passive": "HeroImmune",
+  "charge": false,
+  "turnsUntilDeath": -1,
+  "value": 0,
+  "effect": "",
+  "name": "Kayle",
+  "desc": "Dopóki jest na planszy, Twój bohater nie może otrzymywać obrażeń",
+  "rarity": 2,
+  "cost": {
+   "T": 0,
+   "W": 0,
+   "B": 0,
+   "D": 5
+  },
+  "atk": 3,
+  "hp": 4,
+  "art": "Kayle.png"
  }
 ]

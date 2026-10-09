@@ -191,7 +191,7 @@ function toast(msg, err = false) {
   setTimeout(() => el.remove(), Math.max(err ? 4200 : 3000, msg.length * 60));
 }
 function modal(html) { $('#modal-box').innerHTML = html; $('#modal').classList.remove('hidden'); return $('#modal-box'); }
-function closeModal() { $('#modal').classList.add('hidden'); S.craftOpen = null; }
+function closeModal() { $('#modal').classList.add('hidden'); $('#modal-box').classList.remove('pay-box'); S.craftOpen = null; }
 
 // ================= logowanie =================
 async function renderLoginUsers() {
@@ -360,7 +360,7 @@ function cardHtml(name, o = {}) {
 }
 const totalCost = c => c.cost.T + c.cost.W + c.cost.B + c.cost.D;
 // pogrubienie słów kluczowych w opisach kart
-const KEYWORDS = /(Okrzyk Bojowy|Szarża|Położenie|Moc pie[sś]ni(?: \+ ?\d+)?|Zamr[oó]ź\p{L}*|Wskrze[sś]\p{L}*|Odrzu[cć]\p{L}*|odrzucone|Dobierz|Przyzwij|Przywołaj|Zagraj|Zniszcz\p{L}*|Cofnij|cofnięcie|Zwiększ|piosen\p{L}*|informatyk\p{L}*|dziewczyn\p{L}*|Lewca?|dwa razy|Na koniec Twojej tury|podwójny atak|Po (?:dwóch|trzech) turach zniknij|Na początku Twojej tury|wybran\p{L}*|\d+%|\+\d+\/\+\d+|\+\d+ (?:ataku|zdrowia|HP)|\d+ obraże\p{L}*|\d+ zdrowia)/giu;
+const KEYWORDS = /(Okrzyk Bojowy|Szarża|Prowokacj\p{L}*|nie może otrzymywać obrażeń|zużytą kulę|Położenie|Moc pie[sś]ni(?: \+ ?\d+)?|Zamr[oó]ź\p{L}*|Wskrze[sś]\p{L}*|Odrzu[cć]\p{L}*|odrzucone|Dobierz|Przyzwij|Przywołaj|Zagraj|Zniszcz\p{L}*|Cofnij|cofnięcie|Zwiększ|piosen\p{L}*|informatyk\p{L}*|dziewczyn\p{L}*|Lewca?|dwa razy|Na koniec Twojej tury|podwójny atak|Po (?:dwóch|trzech) turach zniknij|Na początku Twojej tury|wybran\p{L}*|\d+%|\+\d+\/\+\d+|\+\d+ (?:ataku|zdrowia|HP)|\d+ obraże\p{L}*|\d+ zdrowia)/giu;
 const kw = text => esc(text).replace(KEYWORDS, '<b>$1</b>');
 
 // ================= paczki =================
@@ -802,6 +802,7 @@ function animateAfter(v, prev, first, fast) {
     if (f.type === 'heal' && el) { if (f.amount > 0) floatAt(el, '+' + f.amount, 'heal'); el.classList.remove('healed'); void el.offsetWidth; el.classList.add('healed'); SFX.play('heal'); }
     if (f.type === 'summon') { const u = document.querySelector(`.board [data-id="${f.uid}"]`); if (u) { u.classList.add('enter'); if (!fx.some(x => x.type === 'play' && x.by === v.mySeat)) SFX.play('card'); } }
     if (f.type === 'freeze' && el) { el.classList.add('freezing'); }
+    if (f.type === 'immune' && el) { floatAt(el, '🛡', 'heal'); }
     if (f.type === 'buff' && el) { el.classList.remove('buffed'); void el.offsetWidth; el.classList.add('buffed'); }
     if (f.type === 'play' && f.by !== v.mySeat) { showPlayed(f.name, v.opp.name); SFX.play(S.byName[f.name].type === 'spell' ? 'spell' : 'card'); }
     if (f.type === 'burn' && f.by === v.mySeat) toast(`Pełna ręka – ${f.name} spala się!`, true);
@@ -867,6 +868,17 @@ function turnBanner(text, mine) {
   if (mine) SFX.play('turn');
 }
 
+// czy dany cel (jednostka przeciwnika albo 'hero') można teraz kliknąć
+function isValidTarget(u, v) {
+  if (!S.sel) return false;
+  if (S.sel.kind === 'attacker') {
+    const taunts = v.opp.board.filter(x => x.taunt);
+    if (!taunts.length) return true;
+    return u !== 'hero' && u.taunt;
+  }
+  if (S.sel.kind === 'spell') return u !== 'hero' || S.sel.any;
+  return false;
+}
 function heroHtml(p, mine, active) {
   return `${avImg(p.avatar)}<div class="nm"><span>${esc(p.name)}</span></div><div class="hp">${p.hp}</div>${p.spellPower ? `<div class="sp" title="Moc pieśni">✦+${p.spellPower}</div>` : ''}`;
 }
@@ -889,13 +901,15 @@ function unitHtml(u, mine, v) {
   if (mine && v.myTurn && u.canAttack && !v.over) cls.push('ready');
   if (S.sel && S.sel.uid === u.uid) cls.push('sel');
   if (u.frozen) cls.push('frozen');
-  if (!mine && S.sel) cls.push('target');
+  if (!mine && isValidTarget(u, v)) cls.push('target');
+  if (u.taunt) cls.push('taunt');
   const a = u.atk > u.baseAtk ? 'up' : u.atk < u.baseAtk ? 'down' : '';
   const h = u.hp > u.baseHp ? 'up' : u.hp < u.maxHp ? 'down' : '';
   const badges = [];
   if (u.turnsLeft != null) badges.push(`<span title="Zniknie za ${u.turnsLeft} tur(y)">⏳${u.turnsLeft}</span>`);
   if (c.spellPower) badges.push(`<span title="Moc pieśni">✦${c.spellPower}</span>`);
   if (c.passive === 'TwoAttacks') badges.push('<span title="Dwa ataki">⚔²</span>');
+  if (c.passive === 'HeroImmune') badges.push('<span title="Bohater nie otrzymuje obrażeń">🛡♥</span>');
   return `<div class="${cls.join(' ')}" data-id="${u.uid}" data-name="${esc(u.name)}" style="background-image:url('img/art/${c.art}')"><div class="badges">${badges.join('')}</div><div class="stat a ${a}">${u.atk}</div><div class="stat h ${h}">${u.hp}</div></div>`;
 }
 
@@ -909,7 +923,9 @@ function renderGame() {
   $('#hero-me').classList.toggle('active-turn', v.myTurn && !v.over);
   $('#hero-me').classList.toggle('low', me.hp <= 6 && !v.over);
   $('#hero-opp').classList.toggle('low', op.hp <= 6 && !v.over);
-  $('#hero-opp').classList.toggle('target', !!(S.sel && S.sel.kind === 'attacker'));
+  $('#hero-opp').classList.toggle('target', isValidTarget('hero', v));
+  $('#hero-opp').classList.toggle('immune', !!op.immune);
+  $('#hero-me').classList.toggle('immune', !!me.immune);
   const pile = (p, extra) => `<div class="deckpile ${p.deckCount === 0 ? 'empty' : ''}" title="Talia: ${p.deckCount} kart">${p.deckCount ? '<div class="cardback"></div><div class="cardback"></div><div class="cardback"></div>' : ''}<b>${p.deckCount}</b></div><div class="pile-txt">${extra}<div title="${esc(p.grave.join(', '))}">☠ ${p.grave.length}</div></div>`;
   $('#opp-pile').innerHTML = pile(op, `<div title="Karty w ręce">✋ ${op.handCount}</div>`);
   $('#me-pile').innerHTML = pile(me, '');
@@ -963,8 +979,8 @@ function updateHint() {
   if (pd && pd.mine && pd.type === 'discard') t = S.sel && S.sel.kind === 'discard' ? 'Kliknij kartę ponownie, aby ją odrzucić' : `Wybierz kartę do odrzucenia${pd.count > 1 ? ` (jeszcze ${pd.count})` : ''}`;
   else if (pd && pd.mine && pd.type === 'resurrect') t = 'Wybierz jednostkę do wskrzeszenia';
   else if (pd && !pd.mine) t = pd.type === 'discard' ? 'Przeciwnik wybiera kartę do odrzucenia…' : 'Przeciwnik wybiera jednostkę do wskrzeszenia…';
-  else if (S.sel && S.sel.kind === 'attacker') t = 'Wybierz cel ataku: wrogą jednostkę lub bohatera';
-  else if (S.sel && S.sel.kind === 'spell') t = 'Wybierz wrogą jednostkę do zniszczenia';
+  else if (S.sel && S.sel.kind === 'attacker') t = v && v.opp.board.some(x => x.taunt) ? 'Najpierw musisz zaatakować jednostkę z Prowokacją 🛡' : 'Wybierz cel ataku: wrogą jednostkę lub bohatera';
+  else if (S.sel && S.sel.kind === 'spell') t = S.sel.any ? 'Wybierz cel: wrogą jednostkę lub bohatera' : 'Wybierz wrogą jednostkę';
   else if (S.sel && S.sel.kind === 'preview') t = 'Stuknij ponownie, aby zagrać';
   h.textContent = t; h.classList.toggle('show', !!t);
 }
@@ -984,9 +1000,41 @@ function onHandClick(uid) {
   hidePreview();
   if (!v.myTurn) { toast('Poczekaj na swoją turę.'); S.sel = null; renderGame(); return; }
   if (!card.playable) { toast('Nie stać Cię na tę kartę – rozbuduj miasta (+).', true); S.sel = null; renderGame(); return; }
+  if (data.target === 'enemyAny') { S.sel = { kind: 'spell', uid, any: true }; renderGame(); return; }
   if (data.target === 'enemyUnit' && v.opp.board.length) { S.sel = { kind: 'spell', uid }; renderGame(); return; }
   S.sel = null;
-  act({ type: 'play', uid });
+  playCard(uid);
+}
+
+// ---------- zagranie karty z wyborem many ----------
+function playCard(uid, target) {
+  const v = S.view; const card = v.me.hand.find(c => c.uid === uid); if (!card) return;
+  const cost = card.cost, m = v.me.mana;
+  const rest = {}; let restSum = 0, cities = 0;
+  for (const c of ['T', 'W', 'B']) { rest[c] = Math.max(0, m[c].lvl - m[c].used - cost[c]); restSum += rest[c]; if (rest[c] > 0) cities++; }
+  // wybór ma sens tylko, gdy jest koszt dowolny i więcej niż jeden sposób zapłaty
+  if (cost.D > 0 && cities >= 2 && restSum > cost.D) return showPay(card, cost, rest, pay => act({ type: 'play', uid, target, pay }));
+  act({ type: 'play', uid, target });
+}
+function showPay(card, cost, rest, done) {
+  const pay = { T: 0, W: 0, B: 0 };
+  let need = cost.D;   // podpowiedź: z miast, gdzie zostało najwięcej
+  while (need > 0) { const c = ['T', 'W', 'B'].filter(x => rest[x] - pay[x] > 0).sort((a, b) => (rest[b] - pay[b]) - (rest[a] - pay[a]))[0]; if (!c) break; pay[c]++; need--; }
+  const draw = () => {
+    const sum = pay.T + pay.W + pay.B;
+    box.innerHTML = `<div class="pay-card">${cardHtml(card.name, { cost })}</div>
+      <div class="pay-side"><h2>Zapłać ${cost.D} many dowolnej</h2>
+      <p class="muted small">Wybierz, z których miast wziąć manę. Pozostała zostanie na później.</p>
+      ${['T', 'W', 'B'].map(c => `<div class="pay-row ${rest[c] ? '' : 'off'}"><span class="mana-ic ${c}"></span><b>${CITY[c]}</b><span class="muted small">wolne: ${rest[c]}</span>
+        <button class="btn small" data-m="${c}" data-d="-1" ${pay[c] ? '' : 'disabled'}>−</button><span class="pay-n">${pay[c]}</span><button class="btn small" data-m="${c}" data-d="1" ${pay[c] < rest[c] && sum < cost.D ? '' : 'disabled'}>+</button></div>`).join('')}
+      <div class="row center"><button class="btn gold" id="pay-ok" ${sum === cost.D ? '' : 'disabled'}>Zagraj (${sum}/${cost.D})</button><button class="btn ghost" id="pay-no">Anuluj</button></div></div>`;
+    box.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { pay[b.dataset.m] += +b.dataset.d; SFX.play('click'); draw(); });
+    box.querySelector('#pay-ok').onclick = () => { closeModal(); done({ ...pay }); };
+    box.querySelector('#pay-no').onclick = closeModal;
+  };
+  const box = modal('');
+  box.classList.add('pay-box');
+  draw();
 }
 function onMyUnitClick(uid) {
   const v = S.view; if (!v || v.over) return;
@@ -999,8 +1047,12 @@ function onMyUnitClick(uid) {
 }
 function onEnemyClick(target) {
   const v = S.view; if (!v) return;
-  if (S.sel && S.sel.kind === 'attacker') { act({ type: 'attack', uid: S.sel.uid, target }); S.sel = null; renderGame(); return; }
-  if (S.sel && S.sel.kind === 'spell' && target !== 'hero') { act({ type: 'play', uid: S.sel.uid, target }); S.sel = null; renderGame(); return; }
+  if (S.sel && S.sel.kind === 'attacker') {
+    const taunts = v.opp.board.filter(x => x.taunt);
+    if (taunts.length && !taunts.some(x => x.uid === target)) { toast('Najpierw musisz zaatakować jednostkę z Prowokacją 🛡', true); return; }
+    act({ type: 'attack', uid: S.sel.uid, target }); S.sel = null; renderGame(); return;
+  }
+  if (S.sel && S.sel.kind === 'spell' && (target !== 'hero' || S.sel.any)) { const uid = S.sel.uid; S.sel = null; renderGame(); playCard(uid, target); return; }
   if (TOUCH && target !== 'hero') { const u = v.opp.board.find(x => x.uid === target); if (u) showTouchPreview(u.name); }
 }
 function showTouchPreview(name) {

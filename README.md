@@ -47,6 +47,11 @@ rozjazdów jak przy synchronizacji Photonem. Działa na komputerze i telefonie.
 - **Agnieszka** wskrzesza losową własną jednostkę, która naprawdę zginęła na planszy (nie odrzuconą
   ani nie tę, która tylko „zniknęła”). Olaf zawsze ma pierwszeństwo.
 - **Zuzia**: po zagraniu z ręki tura kończy się automatycznie.
+- **Wybór many**: gdy karta ma koszt dowolny i da się go zapłacić na kilka sposobów, pojawia się
+  okienko, w którym wybierasz, z których miast wziąć manę (podpowiedź jest już ustawiona – wystarczy „Zagraj”).
+- **Prowokacja** (Ramus, Bedoes z Tarczą): dopóki przeciwnik ma jednostkę z Prowokacją, ataki muszą iść w nią.
+  Piosenki ją ignorują. **Kayle**: dopóki jest na planszy, Twój bohater nie otrzymuje obrażeń.
+- Odrzucone jednostki trafiają na cmentarz jako polegli – Agnieszka może je wskrzesić.
 - Rozłączenie w trakcie gry nie kończy meczu – wystarczy odświeżyć stronę.
   Jeśli przeciwnik nie wróci przez 60 s, możesz odebrać walkower.
 
@@ -125,6 +130,20 @@ npm test            # silnik walki: efekty kart + 5000 losowych gier
 npm run test:all    # + rynek wymiany + wytwarzanie + serwer (konta, admin, paczki, mecze, nagrody)
 ```
 Na GitHubie testy uruchamiają się same przy każdym pushu (zakładka **Actions → Testy**).
+
+## Grafiki nowych kart
+
+Nowe karty mają na razie zastępcze obrazki. Podmień je własnymi (najlepiej ok. 360×300 px), zapisując
+pod dokładnie tymi nazwami w `public/img/art/`:
+
+| Karta | Plik |
+|---|---|
+| :pp | `pp.png` |
+| Ramus | `Ramus.png` |
+| Bedoes z Tarczą | `Bedoes_z_Tarcza.png` |
+| Kayle | `Kayle.png` |
+
+Jeśli grafika jest w innym formacie (np. `.jpg`), zmień też pole `art` tej karty w `server/cards.json`.
 
 ## Dodawanie nowych kart
 

@@ -44,6 +44,7 @@
     <div class="logo small">DCG</div>
     <nav class="tabs">
       <button data-tab="play" class="tab active">Graj</button>
+      <button data-tab="draft" class="tab">Draft</button>
       <button data-tab="packs" class="tab">Paczki</button>
       <button data-tab="collection" class="tab">Kolekcja</button>
       <button data-tab="market" class="tab">Rynek</button>
@@ -52,7 +53,7 @@
     </nav>
     <div class="me-box">
       <span class="gold-pill" title="Złoto"><i class="coin"></i><b id="me-gold">0</b></span>
-      <span class="gold-pill dust-pill" title="Pył – do wytwarzania kart (Kolekcja)"><i class="dust"></i><b id="me-dust">0</b></span>
+      <span class="gold-pill dust-pill" title="Pył"><i class="dust"></i><b id="me-dust">0</b></span>
       <button class="btn ghost small btn-mute" type="button">🔊</button>
       <img id="me-avatar" class="avatar-sm" alt="">
       <span id="me-name"></span>
@@ -76,10 +77,40 @@
         <p class="muted small">Za każdą wygraną: <b class="gold-t">+10 złota</b>. Pokonaj 5 różnych graczy → <b class="gold-t">+100 złota</b>, a lista się resetuje. Możesz też wypłacić wcześniej: 3/5 → 30, 4/5 → 60 złota.</p>
         <div id="bonus-track" class="bonus-track"></div>
         <div id="cashout" class="cashout"></div>
-        <h2>Ranking</h2>
-        <table class="rank"><thead><tr><th>Gracz</th><th>W</th><th>P</th><th>Bonusy</th><th>Złoto</th></tr></thead><tbody id="rank-body"></tbody></table>
+        <h2>Ranking (Wygrane)</h2>
+        <table class="rank"><thead><tr><th>Gracz</th><th>W</th><th>Bonusy</th><th>Złoto</th></tr></thead><tbody id="rank-body"></tbody></table>
         <h2>Ostatnie mecze</h2>
         <ul id="history" class="history"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- DRAFT -->
+  <div id="tab-draft" class="tab-body hidden">
+    <div class="play-grid">
+      <div class="panel">
+        <h2>Twój Draft</h2>
+        <div id="draft-view-picking" class="hidden">
+           <p>Wybierz kartę <span id="draft-progress"></span></p>
+           <div id="draft-choices" class="mull-cards"></div>
+        </div>
+        <div id="draft-view-ready" class="hidden">
+           <p class="gold-t">Masz gotową talię do draftu (20 kart)!</p>
+           <button id="btn-draft-retire" class="btn danger small">Porzuć obecny draft</button>
+           <div class="deck-cards" id="draft-current-deck" style="margin-top: 10px;"></div>
+        </div>
+        <div id="draft-view-start">
+           <p class="muted small">Skomponuj losową talię (1 Legenda, 2 Rzadkie, 17 Zwykłych) i walcz z innymi w trybie Draft.</p>
+           <button id="btn-draft-start" class="btn gold wide">Zacznij Draft (Koszt: 150 złota)</button>
+        </div>
+      </div>
+      <div class="panel">
+        <h2>Lobby Draftu</h2>
+        <p class="muted small">Wyzywaj graczy, którzy też grają w trybie draftu. (Porażka kończy serię wygranych)</p>
+        <div id="lobby-list-draft" class="lobby-list"></div>
+        
+        <h2>Ranking Draftu (Winstreaki)</h2>
+        <table class="rank"><thead><tr><th>Gracz</th><th>Seria Wygranych</th></tr></thead><tbody id="rank-draft-body"></tbody></table>
       </div>
     </div>
   </div>
@@ -154,7 +185,7 @@
     <div class="market-grid">
       <div class="panel">
         <h2>Wystaw ofertę</h2>
-        <p class="muted small">Wymieniać można tylko karty tej samej rzadkości. Karta nie znika, dopóki ktoś nie przyjmie oferty. Gdy ktoś wystawi dokładnie odwrotną ofertę, wymiana dzieje się od razu.</p>
+        <p class="muted small">Wymieniać można tylko karty tej samej rzadkości.</p>
         <h3 class="small">Oddam:</h3>
         <div id="m-give" class="pick-grid"></div>
         <h3 class="small" id="m-want-label">Chcę dostać:</h3>
@@ -197,19 +228,11 @@
       <div class="panel">
         <h2>Statystyki</h2>
         <div id="my-stats"></div>
-        <h2>Zasady w skrócie</h2>
-        <ul class="rules small">
-          <li>Talia: 20 kart. Start: 20 zdrowia, 3 karty w ręce, karta na turę.</li>
-          <li>Raz na turę rozbudowujesz jedno miasto (+). Kule many kosztują kolejno 1, 1, 2, 2 rozbudowy, max 4 na miasto.</li>
-          <li>Karty płacisz manę miast; szary koszt to mana dowolnego miasta.</li>
-          <li>Jednostki atakują od następnej tury (chyba że mają Szarżę). Klik na swoją jednostkę → klik na cel.</li>
-          <li>Pusta talia = zmęczenie (1, 2, 3… obrażeń). Max 10 kart w ręce, 7 jednostek na planszy.</li>
-        </ul>
       </div>
     </div>
   </div>
 
-  <!-- ADMIN (konta z listy ADMINS, domyślnie szyrrogi) -->
+  <!-- ADMIN -->
   <div id="tab-admin" class="tab-body hidden">
     <div class="panel">
       <div class="row" style="justify-content:space-between"><h2>Panel administratora – gracze</h2><button id="btn-admin-refresh" class="btn small">Odśwież</button></div>
@@ -256,7 +279,7 @@
     <p id="mull-info" class="small muted"></p>
   </div>
   <div id="choice" class="mulligan choice hidden">
-    <h2>Agnieszka: wybierz jednostkę do wskrzeszenia</h2>
+    <h2 id="choice-title">Wybierz:</h2>
     <div id="choice-cards" class="mull-cards"></div>
   </div>
   <div id="opp-left" class="opp-left hidden"><span id="opp-left-text"></span> <button id="btn-claim" class="btn gold small">Odbierz walkower</button></div>

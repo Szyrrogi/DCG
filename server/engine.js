@@ -1,17 +1,15 @@
-// Silnik walki – cała logika gry działa na serwerze, klienci tylko wysyłają akcje.
-// Przeniesione z: GameManager.cs, CardEffects.cs, PassiveEffectsManager.cs,
-// DiscardSystem.cs, PlayerManaManager.cs, ManaColumn.cs, BoardDropZone.cs.
+// Silnik walki – cała logika gry działa na serwerze
 'use strict';
 
 const CARDS = require('./cards.json');
 const BY_NAME = Object.fromEntries(CARDS.map(c => [c.name, c]));
 
 const START_HP = 20;
-const MAX_HP = 200;            // jak w HealFriendlyHero
+const MAX_HP = 200;
 const START_HAND = 3;
 const HAND_LIMIT = 10;
 const BOARD_LIMIT = 7;
-const MANA_COSTS = [1, 1, 2, 2]; // koszt kolejnych kul many (ManaColumn.upgradeCosts)
+const MANA_COSTS = [1, 1, 2, 2];
 const MANA_MAX = 4;
 const CITIES = ['T', 'W', 'B'];
 const CITY_NAMES = { T: 'Tczew', W: 'Warszawa', B: 'Bydgoszcz' };
@@ -30,11 +28,6 @@ function shuffle(arr, rng) {
 class GameError extends Error {}
 
 class Game {
-  /**
-   * @param {string} id
-   * @param {{userId:string,name:string,avatar:number,deck:string[]}[]} seats
-   * @param {() => number} rng
-   */
   constructor(id, seats, rng = Math.random) {
     this.id = id;
     this.rng = rng;
@@ -43,14 +36,21 @@ class Game {
       name: s.name,
       avatar: s.avatar || 1,
       hp: START_HP,
+      originalDeck: s.deck.slice(),
       deck: shuffle(s.deck.filter(n => BY_NAME[n]).map(n => this.newCard(n)), rng),
       hand: [],
       board: [],
       grave: [],
-      dead: [],        // jednostki, które naprawdę zginęły na planszy (do wskrzeszania)
+      dead: [],
       mana: { T: { lvl: 0, prog: 0, used: 0 }, W: { lvl: 0, prog: 0, used: 0 }, B: { lvl: 0, prog: 0, used: 0 } },
       manaActionUsed: false,
       fatigue: 0,
+      juliiTurns: 0,
+      progsPlayed: 0,
+      girlsPlayed: 0,
+      graveBuff: 0,
+      snakeSize: 0,
+      reviveNextTurn: []
     }));
     this.current = rng() < 0.5 ? 0 : 1;
     this.turnNo = 0;
@@ -61,14 +61,14 @@ class Game {
     this.fx = [];
     this.seq = 0;
     this.turnStartedAt = Date.now();
-    this.phase = 'mulligan';           // 'mulligan' → 'play'
+    this.phase = 'mulligan';
     this.mulliganDone = [false, false];
-    this.pendingQueue = [];            // wybory gracza: odrzucenie karty / wskrzeszenie
+    this.pendingQueue = [];
+    this.isDraft = false;
   }
 
-  // ---------- pomocnicze ----------
   newCard(name) { return { uid: 'c' + (uidCounter++), name }; }
-  data(c) { return BY_NAME[c.name]; }
+  data(c) { return BY_NAME[c.name] || BY_NAME[c]; }
   opp(i) { return 1 - i; }
   say(text) { this.log.push({ n: this.seq, text }); if (this.log.length > 60) this.log.shift(); }
   pick(arr) { return arr.length ? arr[Math.floor(this.rng() * arr.length)] : null; }
@@ -77,21 +77,20 @@ class Game {
 
   start() {
     for (let k = 0; k < START_HAND; k++) { this.draw(0); this.draw(1); }
-    this.draw(this.opp(this.current));   // gracz, który nie zaczyna, dostaje 4. kartę
+    this.draw(this.opp(this.current));
     this.say(`Zaczyna ${this.players[this.current].name}. Wymiana kart startowych…`);
   }
 
-  // ---------- mulligan: wymiana kart startowych ----------
   mulligan(i, uids) {
     if (this.phase !== 'mulligan') throw new GameError('Wymiana kart już się skończyła.');
     if (this.mulliganDone[i]) throw new GameError('Już wymieniłeś karty.');
     const p = this.players[i];
     const out = [...new Set(Array.isArray(uids) ? uids : [])].map(u => p.hand.find(c => c.uid === u)).filter(Boolean);
     for (const c of out) p.hand.splice(p.hand.indexOf(c), 1);
-    for (let k = 0; k < out.length; k++) this.draw(i);          // najpierw nowe karty…
-    for (const c of out) p.deck.splice(Math.floor(this.rng() * (p.deck.length + 1)), 0, { uid: c.uid, name: c.name }); // …potem stare wracają do talii
+    for (let k = 0; k < out.length; k++) this.draw(i);
+    for (const c of out) p.deck.splice(Math.floor(this.rng() * (p.deck.length + 1)), 0, { uid: c.uid, name: c.name, atkMod: c.atkMod });
     this.mulliganDone[i] = true;
-    this.say(`${p.name} ${out.length ? `wymienia ${out.length} ${out.length === 1 ? 'kartę' : out.length < 5 ? 'karty' : 'kart'}` : 'zostawia rękę'}.`);
+    this.say(`${p.name} ${out.length ? `wymienia ${out.length} kart` : 'zostawia rękę'}.`);
     if (this.mulliganDone[0] && this.mulliganDone[1]) {
       this.phase = 'play';
       this.startTurn(this.current);
@@ -99,7 +98,6 @@ class Game {
   }
   autoMulligan() { for (const i of [0, 1]) if (!this.mulliganDone[i] && !this.over) { this.fx = []; this.mulligan(i, []); } this.seq++; }
 
-  // ---------- wybory gracza (odrzucenie, wskrzeszenie) ----------
   get pending() { return this.pendingQueue[0] || null; }
   resurrectOptions(i) { return [...new Set(this.players[i].dead.filter(n => BY_NAME[n] && BY_NAME[n].type === 'unit'))]; }
   resurrect(i, name) {
@@ -107,63 +105,110 @@ class Game {
     p.dead.splice(p.dead.indexOf(name), 1);
     const g = p.grave.lastIndexOf(name); if (g >= 0) p.grave.splice(g, 1);
     this.say(`Wskrzeszono ${name}!`);
-    this.summon(i, this.newCard(name), { battlecry: true, fromPlay: true });   // wskrzeszona jednostka też używa Okrzyku Bojowego
+    this.summon(i, this.newCard(name), { battlecry: true, fromPlay: true, fromGrave: true });
   }
-  // rozwiązuje wybory, które nie wymagają decyzji; zatrzymuje się na pierwszym, który wymaga
+
   resolvePending() {
     while (this.pendingQueue.length && !this.over) {
       const q = this.pendingQueue[0], p = this.players[q.player];
       if (q.type === 'discard') {
         if (q.count <= 0 || p.hand.length === 0) { this.pendingQueue.shift(); continue; }
-        if (p.hand.length <= q.count) {           // nie ma z czego wybierać – odrzuć wszystko
+        if (p.hand.length <= q.count) {
           this.pendingQueue.shift();
           for (const c of p.hand.slice()) this.discard(q.player, c);
           this.sweep();
           continue;
         }
-        if (q.player !== this.current) {         // wybór w turze przeciwnika (np. przez Jędrka) – losowo
+        if (q.player !== this.current) {
           q.count--; if (q.count <= 0) this.pendingQueue.shift();
           this.discard(q.player, this.pick(p.hand)); this.sweep();
           continue;
         }
-        return;                                   // gracz musi wybrać
+        return;
       }
       if (q.type === 'resurrect') {
         const opts = this.resurrectOptions(q.player);
-        if (!opts.length) { this.say('Brak poległych jednostek do wskrzeszenia.'); this.pendingQueue.shift(); continue; }
-        if (p.board.length >= BOARD_LIMIT) { this.say('Plansza pełna – nie ma miejsca na wskrzeszenie.'); this.pendingQueue.shift(); continue; }
-        if (opts.includes('Olaf')) { this.pendingQueue.shift(); this.resurrect(q.player, 'Olaf'); continue; } // Olaf ma pierwszeństwo
-        this.pendingQueue.shift(); this.resurrect(q.player, this.pick(opts));   // losowa poległa jednostka
-        continue;
+        if (!opts.length) { this.say('Brak poległych jednostek.'); this.pendingQueue.shift(); continue; }
+        if (p.board.length >= BOARD_LIMIT) { this.say('Plansza pełna.'); this.pendingQueue.shift(); continue; }
+        if (opts.includes('Olaf')) { this.pendingQueue.shift(); this.resurrect(q.player, 'Olaf'); continue; }
+        if (q.player !== this.current) {
+            this.pendingQueue.shift(); this.resurrect(q.player, this.pick(opts));
+            continue;
+        }
+        return;
+      }
+      if (q.type === 'choice') {
+        if (q.player !== this.current) {
+            this.pendingQueue.shift();
+            this.choose(q.player, { index: Math.floor(this.rng() * q.options.length) }, true);
+            continue;
+        }
+        return;
       }
       this.pendingQueue.shift();
     }
   }
-  choose(i, a) {
+  
+  choose(i, a, auto = false) {
     const q = this.pending;
     if (!q || q.player !== i) throw new GameError('Nie ma nic do wybrania.');
     const p = this.players[i];
+    
     if (q.type === 'discard') {
       const c = p.hand.find(x => x.uid === a.uid);
       if (!c) throw new GameError('Wybierz kartę z ręki.');
-      q.count--;
-      if (q.count <= 0) this.pendingQueue.shift();
+      q.count--; if (q.count <= 0) this.pendingQueue.shift();
       this.discard(i, c);
     } else if (q.type === 'resurrect') {
-      if (!this.resurrectOptions(i).includes(a.name)) throw new GameError('Wybierz jednostkę z listy.');
+      if (!this.resurrectOptions(i).includes(a.name)) throw new GameError('Wybierz z listy.');
       this.pendingQueue.shift();
       this.resurrect(i, a.name);
+    } else if (q.type === 'choice') {
+      if (a.index == null || a.index < 0 || a.index >= q.options.length) throw new GameError('Zły wybór.');
+      if (!auto) this.pendingQueue.shift();
+      
+      if (q.context.action === 'olaf') {
+        const u = p.board.find(x => x.uid === q.context.uid);
+        if (u) {
+            if (a.index === 0) u.olafMode = 1;
+            else u.olafMode = 2;
+        }
+      } else if (q.context.action === 'sedoro') {
+        if (a.index === 0) {
+            p.snakeSize = (p.snakeSize || 0) + 1;
+            const sn = this.summon(i, this.newCard('Wąż'), { battlecry: false });
+            if (sn) { sn.atk = p.snakeSize; sn.hp = p.snakeSize; sn.maxHp = p.snakeSize; }
+        } else {
+            p.deck.push(this.newCard('Sedoro OST'), this.newCard('Sedoro OST'));
+            shuffle(p.deck, this.rng);
+            this.say(`Wtasowano 2 Sedoro OST.`);
+        }
+      } else if (q.context.action === 'ostatnipedal') {
+        if (a.index === 0) {
+            for (const u of p.board) { u.atk+=3; u.hp+=3; u.maxHp+=3; this.fx.push({type:'buff', id:u.uid}); }
+        } else {
+            const tgt = this.pick(this.players[this.opp(i)].board.filter(u => this.hasTag(u, 'Lewc')));
+            if (tgt) this.destroyUnit(this.opp(i), tgt);
+        }
+      } else if (q.context.action === 'astarion') {
+        if (a.index === 0) {
+            const sac = this.pick(p.board.filter(x => x.uid !== q.context.uid));
+            if (sac) {
+                this.destroyUnit(i, sac);
+                const u = p.board.find(x => x.uid === q.context.uid);
+                if (u) { u.atk+=2; u.hp+=2; u.maxHp+=2; this.fx.push({type:'buff', id:u.uid}); }
+            }
+        }
+      }
     }
   }
 
-  // ---------- mana ----------
   available(p, city) { const m = p.mana[city]; return m.lvl - m.used; }
 
   effectiveCost(i, card) {
     const d = this.data(card);
     const cost = { ...d.cost };
     if (d.type === 'spell') {
-      // Tael: piosenki kosztują 1 mniej – najpierw z kosztu dowolnego, potem z kosztu miast
       let discount = this.players[i].board.filter(u => this.data(u).passive === 'SongsDiscounted').length;
       const fromD = Math.min(cost.D, discount); cost.D -= fromD; discount -= fromD;
       while (discount > 0) {
@@ -181,7 +226,6 @@ class Game {
     return rest >= cost.D;
   }
 
-  // choice: {T,W,B} – z których miast zapłacić koszt dowolny (wybór gracza); zły wybór = automatycznie
   validPayChoice(p, cost, choice) {
     if (!choice || typeof choice !== 'object') return false;
     let sum = 0;
@@ -192,13 +236,13 @@ class Game {
     }
     return sum === cost.D;
   }
+  
   pay(p, cost, choice) {
     const ok = this.validPayChoice(p, cost, choice);
     for (const c of CITIES) p.mana[c].used += cost[c];
     if (ok) { for (const c of CITIES) p.mana[c].used += choice[c] || 0; return; }
     let need = cost.D;
     while (need > 0) {
-      // płacimy "dowolną" z miasta, którego zostało najwięcej
       const best = CITIES.slice().sort((a, b) => this.available(p, b) - this.available(p, a))[0];
       if (this.available(p, best) <= 0) break;
       p.mana[best].used++; need--;
@@ -213,13 +257,12 @@ class Game {
     return true;
   }
 
-  // ---------- karty ----------
   draw(i, count = 1) {
     const p = this.players[i];
     for (let k = 0; k < count; k++) {
       if (p.deck.length === 0) {
         p.fatigue++;
-        this.damageHero(i, p.fatigue, 'zmęczenie');
+        this.damageHero(i, p.fatigue, null, 'zmęczenie');
         this.say(`${p.name} nie ma kart w talii – zmęczenie zadaje ${p.fatigue} obrażeń.`);
         continue;
       }
@@ -236,49 +279,88 @@ class Game {
       this.fx.push({ type: 'burn', by: i, name: card.name });
       return false;
     }
-    p.hand.push({ uid: card.uid, name: card.name });
+    p.hand.push({ uid: card.uid, name: card.name, atkMod: card.atkMod });
     this.fx.push({ type: 'draw', by: i });
     return true;
   }
 
-  summon(i, card, { battlecry = true, fromPlay = false } = {}) {
+  summon(i, card, { battlecry = true, fromPlay = false, fromGrave = false } = {}) {
     const p = this.players[i];
-    if (p.board.length >= BOARD_LIMIT) { this.say(`Plansza ${p.name} jest pełna – ${card.name} przepada.`); p.grave.push(card.name); return null; }
+    if (p.board.length >= BOARD_LIMIT) { this.say(`Plansza pełna – ${card.name} przepada.`); p.grave.push(card.name); return null; }
     const d = this.data(card);
     const unit = {
       uid: card.uid, name: card.name,
-      atk: d.atk, hp: d.hp, maxHp: d.hp,
+      atk: Math.floor(d.atk * (card.atkMod || 1)), hp: d.hp, maxHp: d.hp,
       attacksLeft: d.charge ? this.attacksPerTurn(card) : 0,
       frozen: false, turnsAlive: 0,
     };
+    
+    if (d.passive === 'BuffEverywhereOnGirl') {
+        unit.atk += (p.girlsPlayed || 0); unit.hp += (p.girlsPlayed || 0); unit.maxHp += (p.girlsPlayed || 0);
+    }
+    if (fromGrave && p.graveBuff) {
+        unit.atk += p.graveBuff; unit.hp += p.graveBuff; unit.maxHp += p.graveBuff;
+    }
+    if (d.passive === 'BuffIfEnemyHasXayoo' && this.players[this.opp(i)].originalDeck.includes('Xayoo "Legenda"')) {
+        unit.atk += 2; unit.hp -= 1; unit.maxHp -= 1;
+    }
+
     p.board.push(unit);
     this.fx.push({ type: 'summon', uid: unit.uid });
     if (!fromPlay) this.say(`${card.name} pojawia się na planszy ${p.name}.`);
-    if (battlecry && d.effect) this.runEffect(d.effect, d.value, i, false, unit);
+    
+    if (fromPlay && card.name !== 'Pudzian') {
+        const pudzians = p.board.filter(u => u !== unit && u.name === 'Pudzian');
+        for (const pdz of pudzians) {
+            if (d.effect) {
+                pdz.atk += 2; this.fx.push({ type: 'buff', id: pdz.uid });
+                unit.atk += 1; unit.hp += 1; unit.maxHp += 1; this.fx.push({ type: 'buff', id: unit.uid });
+            }
+        }
+    }
+
+    if (battlecry && d.effect) {
+        const times = p.board.some(u => this.data(u).passive === 'DoubleBattlecry') ? 2 : 1;
+        for (let bc = 0; bc < times; bc++) this.runEffect(d.effect, d.value, i, false, unit);
+    }
     return unit;
   }
 
   attacksPerTurn(c) { return this.data(c).passive === 'TwoAttacks' ? 2 : 1; }
 
   attackOf(i, unit) {
-    const d = this.data(unit);
     let a = unit.atk;
-    if (d.passive === 'DoubleAttackIfAgnieszka' && this.players[i].board.some(u => u.name.includes('Agnieszka'))) a *= 2;
+    if (unit.name === 'Olaf' && unit.olafMode === 1 && this.players[i].board.some(u => u.name === 'Agnieszka')) a *= 2;
+    const idx = this.players[i].board.indexOf(unit);
+    if (idx >= 0) {
+        const hasRowerAdj = (idx > 0 && this.players[i].board[idx-1].name === 'Rower') || (idx < this.players[i].board.length - 1 && this.players[i].board[idx+1].name === 'Rower');
+        if (hasRowerAdj) { a += 2; if (unit.name === 'Błażej') a += 2; }
+    }
     return Math.max(0, a);
   }
 
-  damageUnit(unit, amount) {
+  damageUnit(unit, amount, sourceUnit = null) {
     if (amount <= 0) return;
     unit.hp -= amount;
     this.fx.push({ type: 'dmg', id: unit.uid, amount });
+    if (sourceUnit && this.data(sourceUnit).passive === 'Lifesteal') {
+        const owner = this.players[0].board.includes(sourceUnit) ? 0 : 1;
+        this.healHero(owner, amount);
+    }
   }
 
   heroImmune(i) { return this.players[i].board.some(u => this.data(u).passive === 'HeroImmune'); }
-  damageHero(i, amount) {
+  
+  damageHero(i, amount, sourceUnit = null, reason = '') {
     if (amount <= 0) return;
-    if (this.heroImmune(i)) { this.fx.push({ type: 'immune', id: this.heroId(i) }); return; }   // Kayle
-    this.players[i].hp -= amount;
-    this.fx.push({ type: 'dmg', id: this.heroId(i), amount });
+    if (this.heroImmune(i)) { this.fx.push({ type: 'immune', id: this.heroId(i) }); return; }
+    const dmg = this.players[i].juliiTurns > 0 ? amount * 3 : amount;
+    this.players[i].hp -= dmg;
+    this.fx.push({ type: 'dmg', id: this.heroId(i), amount: dmg });
+    if (sourceUnit && this.data(sourceUnit).passive === 'Lifesteal') {
+        const owner = this.players[0].board.includes(sourceUnit) ? 0 : 1;
+        this.healHero(owner, dmg);
+    }
   }
 
   healHero(i, amount) {
@@ -293,7 +375,12 @@ class Game {
     if (idx < 0) return;
     p.board.splice(idx, 1);
     p.grave.push(unit.name);
-    if (!vanish) p.dead.push(unit.name);   // zniknięcie (Ola, Gustav) to nie śmierć
+    if (!vanish) {
+        p.dead.push(unit.name);
+        if (this.data(unit).passive === 'ReviveOnce' && !unit.revived) {
+            p.reviveNextTurn.push(unit.name);
+        }
+    }
     this.fx.push({ type: 'die', id: unit.uid });
   }
 
@@ -316,21 +403,31 @@ class Game {
     return true;
   }
 
-  // DiscardSystem: odrzucenie karty z ręki
   discard(i, card) {
     const p = this.players[i];
     const idx = p.hand.indexOf(card);
     if (idx < 0) return;
     p.hand.splice(idx, 1);
+    
+    // DODANA LINIJKA - Informacja dla interfejsu o odrzuceniu
+    this.fx.push({ type: 'discard', by: i, name: card.name });
+
     const d = this.data(card);
     const jedrek = p.board.some(u => this.data(u).passive === 'PlayDiscardedUnits');
+    
+    if (d.passive === 'DamageOnDiscard') {
+        const t = this.pick(this.players[this.opp(i)].board);
+        if (t) { this.damageUnit(t, 4); this.say(`${card.name} zadaje 4 obrażenia ${t.name}!`); }
+    }
+    for (const u of p.board) if (this.data(u).passive === 'DrawOnDiscard') this.draw(i);
+    
     if (d.type === 'unit' && (jedrek || d.passive === 'SummonWhenDiscarded') && p.board.length < BOARD_LIMIT) {
       this.say(`${card.name} zamiast na cmentarz trafia na planszę!`);
       this.summon(i, card, { battlecry: true, fromPlay: true });
       return;
     }
     p.grave.push(card.name);
-    if (d.type === 'unit') p.dead.push(card.name);   // odrzucone jednostki można wskrzesić
+    if (d.type === 'unit') p.dead.push(card.name);
     this.say(`${p.name} odrzuca ${card.name}.`);
   }
 
@@ -340,19 +437,28 @@ class Game {
   }
 
   spellPower(i) {
-    return this.players[i].board.reduce((s, u) => s + (this.data(u).spellPower || 0), 0);
+    let sp = this.players[i].board.reduce((s, u) => s + (this.data(u).spellPower || 0), 0);
+    const hasAga = this.players[i].board.some(u => u.name === 'Agnieszka');
+    for (const u of this.players[i].board) if (u.name === 'Olaf' && u.olafMode === 2 && hasAga) sp += 2;
+    return sp;
   }
 
-  // ---------- efekty (CardEffects.cs) ----------
   runEffect(effect, value, i, isSpell, src, target) {
     const o = this.opp(i);
     const me = this.players[i], them = this.players[o];
-    if (isSpell && effect.includes('Damage')) value += this.spellPower(i);
+    if (isSpell && (effect.includes('Damage') || effect.includes('Heal'))) value += this.spellPower(i);
     const progInHand = () => me.hand.some(c => this.hasTag(c, 'Informatyk'));
 
     switch (effect) {
       case 'HealFriendlyHero': this.healHero(i, value); this.say(`${me.name} leczy się o ${value}.`); break;
       case 'DamageEnemyHero': this.damageHero(o, value); this.say(`${them.name} otrzymuje ${value} obrażeń.`); break;
+      case 'BuffIfEnemyHasXayoo':
+        if (src && this.players[this.opp(i)].originalDeck.includes('Xayoo')) {
+            src.atk += 2; src.hp -= 1; src.maxHp -= 1;
+            this.fx.push({type:'buff', id:src.uid});
+            this.say(`${src.name} wykrywa Xayoo u przeciwnika i zyskuje +2/-1!`);
+        }
+        break;
       case 'SummonGirlfriends': {
         let n = 0;
         const girls = me.deck.filter(c => this.hasTag(c, 'Dziewczyna')).reverse().slice(0, 3);
@@ -361,74 +467,74 @@ class Game {
           if (k < 0 || me.board.length >= BOARD_LIMIT) continue;
           me.deck.splice(k, 1); this.summon(i, c); n++;
         }
-        this.say(`Przywołano ${n} dziewczyn(y) z talii.`);
+        this.say(`Przywołano ${n} dziewczyn z talii.`);
         break;
       }
       case 'DestroyAllMinionsDiscardHand': {
         for (const pi of [0, 1]) for (const u of this.players[pi].board.slice()) if (u !== src) this.destroyUnit(pi, u);
-        for (const c of me.hand.slice()) { me.hand.splice(me.hand.indexOf(c), 1); me.grave.push(c.name); if (this.data(c).type === 'unit') me.dead.push(c.name); }
-        this.say(`Wszystkie inne jednostki zniszczone, ${me.name} odrzuca całą rękę.`);
+        for (const c of me.hand.slice()) { 
+            me.hand.splice(me.hand.indexOf(c), 1); 
+            this.fx.push({ type: 'discard', by: i, name: c.name }); // DODANA LINIJKA
+            me.grave.push(c.name); 
+            if (this.data(c).type === 'unit') me.dead.push(c.name); 
+        }
+        this.say(`Wszystkie inne jednostki zniszczone, odrzucono rękę.`);
         break;
       }
-      case 'SetHealthTo30': me.hp = 30; this.fx.push({ type: 'heal', id: this.heroId(i), amount: 0 }); this.say(`Zdrowie ${me.name} ustawione na 30.`); break;
-      case 'ResurrectFriendlyUnit':   // Agnieszka: losowa własna jednostka, która zginęła (Olaf zawsze pierwszy)
-        this.pendingQueue.push({ player: i, type: 'resurrect' });
-        break;
+      case 'SetHealthTo30': me.hp = 30; this.fx.push({ type: 'heal', id: this.heroId(i), amount: 0 }); this.say(`Zdrowie ustawione na 30.`); break;
+      case 'ResurrectFriendlyUnit': this.pendingQueue.push({ player: i, type: 'resurrect' }); break;
       case 'DamageAllExceptProgrammers': {
-        if (!progInHand()) { this.say('Brak informatyka w ręce – efekt nie działa.'); break; }
+        if (!progInHand()) { this.say('Brak informatyka w ręce.'); break; }
         for (const pi of [0, 1]) for (const u of this.players[pi].board) if (!this.hasTag(u, 'Informatyk')) this.damageUnit(u, value);
-        this.say(`${value} obrażeń dla wszystkich poza informatykami.`);
+        this.say(`${value} obrażeń poza informatykami.`);
         break;
       }
-      case 'ChanceBuff': {   // Szymon: 50% szans na +X/+Y
+      case 'ChanceBuff': {
         if (!src) break;
         const hp = BY_NAME[src.name].valueHp != null ? BY_NAME[src.name].valueHp : value;
-        if (this.rng() < 0.5) { src.atk += value; src.hp += hp; src.maxHp += hp; this.fx.push({ type: 'buff', id: src.uid }); this.say(`${src.name} dostaje +${value}/+${hp}!`); }
-        else if (src) this.say(`${src.name} nie miał szczęścia.`);
+        if (this.rng() < 0.5) { src.atk += value; src.hp += hp; src.maxHp += hp; this.fx.push({ type: 'buff', id: src.uid }); }
         break;
       }
       case 'DrawCards': this.draw(i, value); this.say(`${me.name} dobiera ${value} karty.`); break;
-      case 'DrawNamedCard': {   // Olaf: dobierz Agnieszkę
+      case 'DrawNamedCard': {
         const name = BY_NAME[src ? src.name : ''] && BY_NAME[src.name].drawName;
-        const c = me.deck.find(c => c.name === name);
-        if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.toHand(i, c); this.say(`${me.name} dobiera ${c.name}.`); }
+        const c = me.deck.find(x => x.name === name);
+        if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.toHand(i, c); }
         break;
       }
-      case 'ReturnToHandRandom':
-        if (src && this.rng() < 0.5 && this.returnToHand(i, src)) this.say(`${src.name} wraca do ręki!`);
-        else if (src) this.say(`${src.name} zostaje na planszy.`);
-        break;
+      case 'ReturnToHandRandom': if (src && this.rng() < 0.5 && this.returnToHand(i, src)) this.say(`${src.name} wraca do ręki!`); break;
       case 'ChargeDiscardTwo':
         if (src) src.attacksLeft = this.attacksPerTurn(src);
         this.pendingQueue.push({ player: i, type: 'discard', count: 2 });
         break;
-      case 'BuffIfProgrammerInHand': if (src && progInHand()) { src.atk += value; this.say(`${src.name} +${value} ataku.`); } break;
-      case 'BuffIfProgrammerInHandHealth': if (src && progInHand()) { src.hp += value; src.maxHp += value; this.say(`${src.name} +${value} zdrowia.`); } break;
+      case 'BuffAndChargeIfProgrammerInHand': 
+        if (src && progInHand()) { src.atk += value; src.hp += value; src.maxHp += value; src.attacksLeft = this.attacksPerTurn(src); this.fx.push({type:'buff', id:src.uid}); } break;
+      case 'BuffAndTauntIfProgrammerInHand':
+        if (src && progInHand()) { src.atk += value; src.taunt = true; this.fx.push({type:'buff', id:src.uid}); } break;
       case 'BuffIfProgrammerInHandBoth': {
         const hp = BY_NAME[src ? src.name : ''] && BY_NAME[src.name].valueHp != null ? BY_NAME[src.name].valueHp : value;
-        if (src && progInHand()) { src.atk += value; src.hp += hp; src.maxHp += hp; this.say(`${src.name} +${value}/+${hp}.`); }
-        break;
+        if (src && progInHand()) { src.atk += value; src.hp += hp; src.maxHp += hp; this.fx.push({type:'buff', id:src.uid}); } break;
       }
-      case 'BuffPerCardInHand': if (src) { const n = me.hand.length; src.hp += n; src.maxHp += n; this.say(`${src.name} +${n} zdrowia.`); } break;
+      case 'BuffPerCardInHand': if (src) { const n = me.hand.length; src.hp += n; src.maxHp += n; } break;
       case 'AddRandomSpellToHand': {
         const spells = me.deck.filter(c => this.data(c).type === 'spell');
         const c = this.pick(spells);
-        if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.toHand(i, c); this.say(`${me.name} dobiera piosenkę.`); }
+        if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.toHand(i, c); }
         break;
       }
       case 'OpponentDiscardsCard': this.discardRandom(o); break;
       case 'DrawCardWithTag': case 'DrawTwoWithTag': {
         const tag = TAG_BY_INDEX[value];
         for (let k = 0; k < (effect === 'DrawTwoWithTag' ? 2 : 1); k++) {
-          const c = me.deck.find(c => this.hasTag(c, tag));
-          if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.toHand(i, c); this.say(`${me.name} dobiera kartę (${tag}).`); }
+          const c = me.deck.find(x => this.hasTag(x, tag));
+          if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.toHand(i, c); }
         }
         break;
       }
-      case 'DrawSpecificCard': {   // Jeżyk: dobiera i Julii, i Jędrka
+      case 'DrawSpecificCard': {
         for (const name of ['Julii', 'Jędrek']) {
-          const c = me.deck.find(c => c.name === name);
-          if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.toHand(i, c); this.say(`${me.name} dobiera ${c.name}.`); }
+          const c = me.deck.find(x => x.name === name);
+          if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.toHand(i, c); }
         }
         break;
       }
@@ -437,16 +543,13 @@ class Game {
         for (let k = me.deck.length - 1; k >= 0 && n < 5; k--) {
           if (this.data(me.deck[k]).type === 'spell') { const [c] = me.deck.splice(k, 1); this.toHand(i, c); n++; }
         }
-        this.say(`${me.name} dobiera ${n} piosenek.`);
         break;
       }
       case 'FreezeAllEnemies':
         for (const u of them.board) { u.frozen = true; u.attacksLeft = 0; this.fx.push({ type: 'freeze', id: u.uid }); }
-        this.say(`Jednostki ${them.name} zamrożone.`);
         break;
       case 'DamageRandomEnemy3Times':
         for (let k = 0; k < 3; k++) {
-          // losowy cel: żywa wroga jednostka albo wrogi bohater
           const t = this.pick([...them.board.filter(u => u.hp > 0), 'hero']);
           if (t === 'hero') this.damageHero(o, value); else this.damageUnit(t, value);
         }
@@ -454,28 +557,29 @@ class Game {
       case 'DestroyTargetMinion': {
         let t = target ? them.board.find(u => u.uid === target) : null;
         if (!t) t = this.pick(them.board);
-        if (t) { this.destroyUnit(o, t); this.say(`${t.name} zniszczony.`); }
+        if (t) this.destroyUnit(o, t);
         break;
       }
       case 'SummonRandomUnit': {
-        const c = this.pick(me.deck.filter(c => this.data(c).type === 'unit'));
+        const c = this.pick(me.deck.filter(x => this.data(x).type === 'unit'));
         if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.summon(i, c); }
         break;
       }
       case 'DamageAllEnemies':
         for (const u of them.board) this.damageUnit(u, value);
-        this.say(`${value} obrażeń dla wszystkich jednostek ${them.name}.`);
         break;
-      case 'DamageAndDiscard': {   // Diss na Szymona: wybrany wróg (jednostka albo bohater)
+      case 'DamageAndDiscard': {
         const t = target && target !== 'hero' ? them.board.find(u => u.uid === target) : null;
-        if (t) { this.damageUnit(t, value); this.say(`${t.name} otrzymuje ${value} obrażeń.`); }
-        else { this.damageHero(o, value); this.say(`${them.name} otrzymuje ${value} obrażeń.`); }
+        if (t) this.damageUnit(t, value); else this.damageHero(o, value);
         this.pendingQueue.push({ player: i, type: 'discard', count: 1 });
         break;
       }
-      case 'IncreaseBydgoszczMana': {   // Mordekaiser: gotowa, ale już zużyta kula Bydgoszczy
+      case 'HalfBydgoszczMana': {
         const m = me.mana.B;
-        if (m.lvl < 4) { m.lvl++; m.used++; this.say(`${me.name} dostaje zużytą kulę Bydgoszczy.`); }
+        if (m.lvl < MANA_MAX) {
+            m.prog += MANA_COSTS[m.lvl] / 2;
+            if (m.prog >= MANA_COSTS[m.lvl]) { m.lvl++; m.prog = 0; }
+        }
         break;
       }
       case 'DiscardCardFromHand': this.pendingQueue.push({ player: i, type: 'discard', count: 1 }); break;
@@ -484,15 +588,81 @@ class Game {
         if (t && this.returnToHand(i, t)) this.say(`${t.name} wraca do ręki.`);
         break;
       }
-      case 'SetEnemyHealthToYours': them.hp = me.hp; this.fx.push({ type: 'heal', id: this.heroId(o), amount: 0 }); this.say(`Zdrowie ${them.name} ustawione na ${me.hp}.`); break;
+      case 'SetEnemyHealthToYours': them.hp = me.hp; this.fx.push({ type: 'heal', id: this.heroId(o), amount: 0 }); break;
       case 'DamageSelfAndDraw': this.damageHero(i, value); this.draw(i); break;
-      case 'DamageBothHeroes': this.damageHero(i, value); this.damageHero(o, value); this.say(`Obaj bohaterowie otrzymują ${value} obrażeń.`); break;
+      case 'DamageBothHeroes': this.damageHero(i, value); this.damageHero(o, value); break;
+      case 'TripleDamage3Turns': 
+        me.hp = 30; 
+        this.fx.push({ type: 'heal', id: this.heroId(i), amount: 0 });
+        me.juliiTurns = 3; 
+        this.say(`Zdrowie ustawione na 30. Julii zadziałała – bohater będzie otrzymywać x3 obrażeń!`); 
+        break;
+      case 'BothPlayersDraw2': this.draw(i, 2); this.draw(o, 2); break;
+      case 'DestroyAndOpponentDraws': {
+        const tgt = target ? them.board.find(u => u.uid === target) : null;
+        if (tgt) this.destroyUnit(o, tgt);
+        this.draw(o, 2);
+        break;
+      }
+      case 'DiscardAndDraw2': this.pendingQueue.push({ player: i, type: 'discard', count: 1 }); this.draw(i, 2); break;
+      case 'BuffGraveyard': me.graveBuff = (me.graveBuff || 0) + 2; this.say(`Cmentarz wzmocniony +2/+2.`); break;
+      case 'SummonTwoCopies': 
+        if (src) { this.summon(i, this.newCard(src.name), { battlecry: false }); this.summon(i, this.newCard(src.name), { battlecry: false }); } break;
+      case 'HalveAttack3Random': {
+        const targets = shuffle([...them.hand, ...them.deck].filter(c => BY_NAME[c.name] && BY_NAME[c.name].type === 'unit'), this.rng).slice(0, 3);
+        for (const t of targets) t.atkMod = (t.atkMod || 1) * 0.5;
+        this.say(`Tequila osłabia 3 jednostki.`);
+        break;
+      }
+      case 'SummonDragonsForProgrammers': {
+        let spawned = 0;
+        for (let k = 0; k < (me.progsPlayed || 0) && me.board.length < BOARD_LIMIT; k++) {
+            this.summon(i, this.newCard('Smok'), { battlecry: false, fromPlay: true }); spawned++;
+        }
+        this.say(`Przywołano ${spawned} smoków.`);
+        break;
+      }
+      case 'DebuffLegends':
+        for (const u of them.board) {
+            if (BY_NAME[u.name] && BY_NAME[u.name].rarity === 3) { u.atk -= 2; u.hp -= 2; u.maxHp -= 2; this.fx.push({type:'dmg', id:u.uid, amount:0}); }
+        }
+        break;
+      case 'DestroyTargetGirl': {
+        const tgtGirl = target ? them.board.find(u => u.uid === target) : null;
+        if (tgtGirl && this.hasTag(tgtGirl, 'Dziewczyna')) this.destroyUnit(o, tgtGirl);
+        else { const randGirl = this.pick(them.board.filter(u => this.hasTag(u, 'Dziewczyna'))); if (randGirl) this.destroyUnit(o, randGirl); }
+        break;
+      }
+      case 'DamageGrass':
+        for (const pi of [0, 1]) {
+            for (const u of this.players[pi].board) {
+                if (this.hasTag(u, 'Dziewczyna')) continue;
+                if (this.hasTag(u, 'Informatyk')) this.damageUnit(u, 3 + value);
+                else this.damageUnit(u, 1 + value);
+            }
+        }
+        break;
+      case 'OlafChoice': {
+        const aga = me.deck.find(x => x.name === 'Agnieszka');
+        if (aga) { me.deck.splice(me.deck.indexOf(aga), 1); this.toHand(i, aga); this.say(`${me.name} dobiera Agnieszkę.`); }
+        if(src) this.pendingQueue.push({ player: i, type: 'choice', options: [{ name: "Podwójny atak", desc: "Podwójny atak z Agą" }, { name: "Moc Pieśni", desc: "+2 Mocy Pieśni z Agą" }], context: { uid: src.uid, action: 'olaf' } }); 
+        break;
+      }
+      case 'SedoroChoice':
+        this.pendingQueue.push({ player: i, type: 'choice', options: [{ name: "Wąż", desc: "Przywołaj rosnącego węża" }, { name: "OST", desc: "Wtasuj 2 'Sedoro OST'" }], context: { action: 'sedoro' } }); break;
+      case 'LastPedalChoice':
+        this.pendingQueue.push({ player: i, type: 'choice', options: [{ name: "Wzmocnij", desc: "Daj stronnikom +3/+3" }, { name: "Zniszcz", desc: "Zniszcz losowego Lewca" }], context: { action: 'ostatnipedal' } }); break;
+      case 'AstarionChoice':
+        if(src) this.pendingQueue.push({ player: i, type: 'choice', options: [{ name: "Poświęć", desc: "Zyskaj +2/+2 za inną jedn." }, { name: "Pomiń", desc: "Nic" }], context: { uid: src.uid, action: 'astarion' } }); break;
+      case 'SummonScalingSnake':
+        me.snakeSize = (me.snakeSize || 0) + 1;
+        const snake = this.summon(i, this.newCard('Wąż'), { battlecry: false });
+        if (snake) { snake.atk = me.snakeSize; snake.hp = me.snakeSize; snake.maxHp = me.snakeSize; }
+        break;
       case '': case 'None': break;
-      default: this.say(`(nieznany efekt: ${effect})`);
     }
   }
 
-  // ---------- tury ----------
   startTurn(i) {
     this.current = i;
     this.turnNo++;
@@ -500,27 +670,46 @@ class Game {
     const p = this.players[i];
     for (const c of CITIES) p.mana[c].used = 0;
     p.manaActionUsed = false;
+    
+    if (p.juliiTurns > 0) p.juliiTurns--;
+    
+    if (p.reviveNextTurn && p.reviveNextTurn.length) {
+        for (const name of p.reviveNextTurn) {
+            const u = this.summon(i, this.newCard(name), { battlecry: false });
+            if (u) u.revived = true;
+        }
+        p.reviveNextTurn = [];
+    }
+
     this.draw(i);
-    for (const u of p.board) {
-      // zamrożona jednostka traci ataki w tej turze; lód topnieje na końcu tury
+    for (const u of p.board.slice()) {
       u.attacksLeft = u.frozen ? 0 : this.attacksPerTurn(u);
       if (this.data(u).passive === 'GainStatStartTurn') { u.atk++; u.hp++; u.maxHp++; this.fx.push({ type: 'buff', id: u.uid }); }
-    }
-    // jednostki, które giną po X turach
-    for (const u of p.board.slice()) {
+      if (this.data(u).passive === 'DestroyAllStartTurn') {
+          for (const pi of [0, 1]) for (const target of this.players[pi].board.slice()) this.destroyUnit(pi, target);
+      }
+      
       const d = this.data(u);
       if (d.turnsUntilDeath > 0) {
         u.turnsAlive++;
-        if (u.turnsAlive >= d.turnsUntilDeath) { this.destroyUnit(i, u, { vanish: true }); this.say(d.hiddenDeath ? `${u.name} nagle znika!` : `${u.name} znika.`); }
+        if (u.turnsAlive >= d.turnsUntilDeath) { this.destroyUnit(i, u, { vanish: true }); }
       }
     }
     this.checkEnd();
   }
 
   endTurnPassives(i) {
-    for (const u of this.players[i].board) {
+    const p = this.players[i];
+    for (const u of p.board) {
       u.frozen = false;
       if (this.data(u).passive === 'GainStatEndTurn') { u.atk++; u.hp++; u.maxHp++; this.fx.push({ type: 'buff', id: u.uid }); }
+      if (this.data(u).passive === 'AutoAttackEndTurn') {
+          const targets = [...this.players[this.opp(i)].board, 'hero'];
+          const t = this.pick(targets);
+          const atk = this.attackOf(i, u);
+          if (t === 'hero') this.damageHero(this.opp(i), atk, u);
+          else this.damageUnit(t, atk, u);
+      }
     }
   }
 
@@ -528,7 +717,6 @@ class Game {
     if (this.over) return true;
     const dead = [0, 1].filter(k => this.players[k].hp <= 0);
     if (dead.length === 0) return false;
-    // przy jednoczesnej śmierci przegrywa gracz, którego jest tura (jak w oryginale)
     const loser = dead.length === 2 ? this.current : dead[0];
     this.finish(this.opp(loser), 'hp');
     return true;
@@ -542,7 +730,6 @@ class Game {
     this.say(`KONIEC GRY – wygrywa ${this.players[winner].name}!`);
   }
 
-  // ---------- akcje graczy ----------
   action(i, a) {
     if (this.over) throw new GameError('Gra się skończyła.');
     this.fx = [];
@@ -551,35 +738,58 @@ class Game {
     if (this.phase === 'mulligan') throw new GameError('Najpierw wymiana kart startowych.');
     if (i !== this.current) throw new GameError('To nie Twoja tura.');
     const p = this.players[i];
-    if (this.pending && a.type !== 'choose') throw new GameError(this.pending.type === 'discard' ? 'Najpierw wybierz kartę do odrzucenia.' : 'Najpierw wybierz jednostkę do wskrzeszenia.');
+    if (this.pending && a.type !== 'choose' && a.type !== 'choiceIndex') throw new GameError('Najpierw dokonaj wyboru.');
+    
     switch (a.type) {
       case 'choose': this.choose(i, a); break;
+      case 'choiceIndex': this.choose(i, a); break;
       case 'mana': {
         if (!CITIES.includes(a.city)) throw new GameError('Złe miasto.');
-        if (p.manaActionUsed) throw new GameError('Już rozbudowałeś miasto w tej turze.');
-        if (!this.addManaProgress(p, a.city)) throw new GameError('To miasto jest już w pełni rozbudowane.');
+        if (p.manaActionUsed) throw new GameError('Już rozbudowałeś miasto.');
+        if (!this.addManaProgress(p, a.city)) throw new GameError('To miasto jest już rozbudowane.');
         p.manaActionUsed = true;
-        this.say(`${p.name} rozbudowuje ${CITY_NAMES[a.city]}.`);
         break;
       }
       case 'play': {
-        const card = p.hand.find(c => c.uid === a.uid);
-        if (!card) throw new GameError('Nie masz tej karty.');
+        let card, cost, fromGrave = false;
+        if (a.uid && a.uid.startsWith('g_')) {
+            const idx = parseInt(a.uid.substring(2));
+            const name = p.grave[idx];
+            if (!name || BY_NAME[name].passive !== 'PlayableFromGraveyard') throw new GameError('Zła karta.');
+            card = { uid: 'c' + (uidCounter++), name };
+            cost = { T:0, W:0, B:0, D:2 };
+            fromGrave = true;
+        } else {
+            card = p.hand.find(c => c.uid === a.uid);
+            if (!card) throw new GameError('Nie masz tej karty.');
+            cost = this.effectiveCost(i, card);
+        }
+        
         const d = this.data(card);
-        const cost = this.effectiveCost(i, card);
         if (!this.canPay(p, cost)) throw new GameError('Nie stać Cię na tę kartę.');
-        if (d.type === 'unit' && p.board.length >= BOARD_LIMIT) throw new GameError('Plansza jest pełna.');
+        if (d.type === 'unit' && p.board.length >= BOARD_LIMIT) throw new GameError('Plansza pełna.');
         this.pay(p, cost, a.pay);
-        p.hand.splice(p.hand.indexOf(card), 1);
+        
+        if (fromGrave) {
+            const idx = p.grave.lastIndexOf(card.name);
+            if (idx >= 0) p.grave.splice(idx, 1);
+        } else {
+            p.hand.splice(p.hand.indexOf(card), 1);
+        }
+        
+        if (this.hasTag(card, 'Informatyk')) p.progsPlayed = (p.progsPlayed || 0) + 1;
+        if (this.hasTag(card, 'Dziewczyna')) {
+            p.girlsPlayed = (p.girlsPlayed || 0) + 1;
+            for (const u of p.board) if (this.data(u).passive === 'BuffEverywhereOnGirl') { u.atk++; u.hp++; u.maxHp++; this.fx.push({type:'buff', id:u.uid}); }
+        }
+        
         this.fx.push({ type: 'play', name: card.name, by: i });
         if (d.type === 'unit') {
-          this.say(`${p.name} zagrywa ${card.name}.`);
-          this.summon(i, card, { fromPlay: true });
-          if (d.endsTurn) this.autoEndTurn = true;   // np. Zuzia – po zagraniu tura się kończy
+          this.summon(i, card, { fromPlay: true, fromGrave });
+          if (d.endsTurn) this.autoEndTurn = true;
         } else {
-          this.say(`${p.name} gra piosenkę ${card.name}.`);
           this.runEffect(d.effect, d.value, i, true, null, a.target);
-          for (const u of p.board) if (this.data(u).passive === 'BuffOnSpellCast') { u.atk++; u.hp++; u.maxHp++; this.fx.push({ type: 'buff', id: u.uid }); }
+          for (const u of p.board) if (this.data(u).passive === 'BuffAtkOnSpellCast') { u.atk++; this.fx.push({ type: 'buff', id: u.uid }); }
           p.grave.push(card.name);
         }
         break;
@@ -587,21 +797,23 @@ class Game {
       case 'attack': {
         const u = p.board.find(x => x.uid === a.uid);
         if (!u) throw new GameError('Nie ma takiej jednostki.');
-        if (u.attacksLeft <= 0) throw new GameError(u.frozen ? 'Jednostka jest zamrożona.' : 'Ta jednostka nie może teraz atakować.');
+        if (this.data(u).passive === 'AutoAttackEndTurn') throw new GameError('Ta jednostka nie może atakować ręcznie.');
+        if (u.attacksLeft <= 0) throw new GameError(u.frozen ? 'Zamrożona.' : 'Nie może atakować.');
         const o = this.opp(i);
-        const taunts = this.players[o].board.filter(x => this.data(x).taunt);
-        if (taunts.length && !taunts.some(x => x.uid === a.target)) throw new GameError('Najpierw musisz zaatakować jednostkę z Prowokacją.');
+        const taunts = this.players[o].board.filter(x => this.data(x).taunt || x.taunt);
+        if (taunts.length && !taunts.some(x => x.uid === a.target)) throw new GameError('Najpierw Prowokacja.');
         const atk = this.attackOf(i, u);
         if (a.target === 'hero') {
-          this.damageHero(o, atk);
-          this.say(`${u.name} atakuje bohatera ${this.players[o].name} za ${atk}.`);
+          this.damageHero(o, atk, u);
         } else {
           const t = this.players[o].board.find(x => x.uid === a.target);
           if (!t) throw new GameError('Zły cel.');
           const back = this.attackOf(o, t);
-          this.damageUnit(t, atk);
-          this.damageUnit(u, back);
-          this.say(`${u.name} atakuje ${t.name}.`);
+          this.damageUnit(t, atk, u);
+          this.damageUnit(u, back, t);
+          if (this.data(u).passive === 'DamageHeroOnAttack') {
+              this.damageHero(o, atk, u, 'Stuu');
+          }
         }
         this.fx.push({ type: 'attack', from: u.uid, to: a.target === 'hero' ? this.heroId(o) : a.target });
         u.attacksLeft--;
@@ -609,7 +821,6 @@ class Game {
       }
       case 'end': {
         this.endTurnPassives(i);
-        this.say(`${p.name} kończy turę.`);
         this.sweep();
         if (!this.checkEnd()) this.startTurn(this.opp(i));
         break;
@@ -622,7 +833,6 @@ class Game {
     this.checkEnd();
     if (this.autoEndTurn && !this.pending && !this.over && this.current === i) {
       this.autoEndTurn = false;
-      this.say(`Tura ${p.name} kończy się automatycznie.`);
       this.endTurnPassives(i);
       this.sweep();
       if (!this.checkEnd()) this.startTurn(this.opp(i));
@@ -630,15 +840,13 @@ class Game {
     this.seq++;
   }
 
-  // Widok gry z perspektywy gracza i (ukrywa rękę i talię przeciwnika)
   view(i) {
     const me = this.players[i], o = this.players[this.opp(i)];
     const unitView = (pi, u) => ({
       uid: u.uid, name: u.name, atk: this.attackOf(pi, u), hp: u.hp, maxHp: u.maxHp,
       baseAtk: BY_NAME[u.name].atk, baseHp: BY_NAME[u.name].hp,
-      canAttack: this.phase === 'play' && !this.pending && pi === this.current && u.attacksLeft > 0,
-      taunt: !!BY_NAME[u.name].taunt, attacksLeft: u.attacksLeft, frozen: u.frozen,
-      // ukryta zdolność (np. Gustav) – przeciwnik ani właściciel nie widzą licznika
+      canAttack: this.phase === 'play' && !this.pending && pi === this.current && u.attacksLeft > 0 && this.data(u).passive !== 'AutoAttackEndTurn',
+      taunt: !!BY_NAME[u.name].taunt || !!u.taunt, attacksLeft: u.attacksLeft, frozen: u.frozen,
       turnsLeft: BY_NAME[u.name].turnsUntilDeath > 0 && !BY_NAME[u.name].hiddenDeath ? BY_NAME[u.name].turnsUntilDeath - u.turnsAlive : null,
     });
     const pub = (pi) => {
@@ -651,32 +859,33 @@ class Game {
         spellPower: this.spellPower(pi), immune: this.heroImmune(pi),
       };
     };
+    
+    const gravePlayables = me.grave.filter(n => BY_NAME[n] && BY_NAME[n].passive === 'PlayableFromGraveyard').map((n, idx) => ({ 
+        uid: 'g_' + idx, name: n, cost: { T:0, W:0, B:0, D:2 }, playable: this.phase === 'play' && !this.pending && this.current === i && !this.over && this.canPay(me, { T:0, W:0, B:0, D:2 }) && me.board.length < BOARD_LIMIT 
+    }));
+
     return {
       id: this.id, seq: this.seq, turnNo: this.turnNo, mySeat: i, currentSeat: this.current,
       myTurn: this.phase === 'play' && this.current === i, over: this.over,
-      phase: this.phase, mulliganEndsAt: this.mulliganEndsAt || null,
+      phase: this.phase, mulliganEndsAt: this.mulliganEndsAt || null, spectator: false,
       mulligan: this.phase === 'mulligan' ? { me: this.mulliganDone[i], opp: this.mulliganDone[this.opp(i)] } : null,
       pending: this.pending ? (this.pending.player === i
         ? { mine: true, type: this.pending.type, count: this.pending.count || 0, options: this.pending.options || null }
         : { mine: false, type: this.pending.type }) : null,
       winner: this.over ? (this.winner === i ? 'me' : 'opp') : null, endReason: this.endReason,
-      me: { ...pub(i), hand: me.hand.map(c => ({ uid: c.uid, name: c.name, cost: this.effectiveCost(i, c), playable: this.phase === 'play' && !this.pending && this.current === i && !this.over && this.canPay(me, this.effectiveCost(i, c)) && !(BY_NAME[c.name].type === 'unit' && me.board.length >= BOARD_LIMIT) })) },
+      me: { ...pub(i), hand: [...me.hand.map(c => ({ uid: c.uid, name: c.name, cost: this.effectiveCost(i, c), playable: this.phase === 'play' && !this.pending && this.current === i && !this.over && this.canPay(me, this.effectiveCost(i, c)) && !(BY_NAME[c.name].type === 'unit' && me.board.length >= BOARD_LIMIT) })), ...gravePlayables] },
       opp: pub(this.opp(i)),
       log: this.log.slice(-30).map(l => l.text),
-      fx: this.fx,
-      turnStartedAt: this.turnStartedAt,
+      fx: this.fx, turnStartedAt: this.turnStartedAt,
     };
   }
 }
 
-// widok dla obserwatora: wszystko jak u gracza 0, ale widać karty w rękach obu graczy
 Game.prototype.spectatorView = function () {
   const v = this.view(0);
   const handOf = pi => this.players[pi].hand.map(c => ({ uid: c.uid, name: c.name, cost: this.effectiveCost(pi, c), playable: false }));
-  v.spectator = true;
-  v.myTurn = false;
-  v.me.hand = handOf(0);
-  v.opp.hand = handOf(1);
+  v.spectator = true; v.myTurn = false;
+  v.me.hand = handOf(0); v.opp.hand = handOf(1);
   if (v.pending) v.pending = { mine: false, type: v.pending.type || this.pending.type, who: this.players[this.pending.player].name };
   v.mulligan = this.phase === 'mulligan' ? { me: this.mulliganDone[0], opp: this.mulliganDone[1] } : null;
   v.currentName = this.players[this.current].name;

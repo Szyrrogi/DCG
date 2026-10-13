@@ -72,7 +72,9 @@ function chooseMove(v) {
 async function playBot(c, deckId, bot) {
   c.view = null; c.inbox.length = 0;
   c.send({ t: 'startBot', bot, deckId });
-  await c.wait(m => m.t === 'game');
+  const first = await c.wait(m => m.t === 'game');
+  assert.strictEqual(first.view.currentSeat, first.view.mySeat, 'z botem zawsze zaczyna gracz');
+  assert.strictEqual(first.view.me.hand.length, 3);
   c.send({ t: 'act', action: { type: 'mulligan', uids: [] } });
   let guard = 0, sawBossEvent = false;
   for (;;) {

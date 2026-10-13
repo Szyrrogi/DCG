@@ -447,8 +447,15 @@ test('bossowie: 40 HP, 3 many Tczewa, Wyrok Kunnera w pierwszej turze', () => {
   if (g.current === 0) g.action(0, { type: 'end' });
   assert.strictEqual(g.players[0].hp, 6);
   assert(g.view(0).events.some(e => e.card === 'Wyrok Kunnera' && e.by === 1));
+  // Wyrok kosztuje 1 – w tej turze Kunner nic więcej nie zagra, zbudowana kula jest zużyta
+  const jade = g.newCard('Jade Jade Jade'); g.players[1].hand.push(jade);
+  g.action(1, { type: 'mana', city: 'W' });
+  assert.strictEqual(g.available(g.players[1], 'W'), 0);
+  assert.throws(() => g.action(1, { type: 'play', uid: jade.uid }), /stać/);
+  assert(!g.view(1).me.hand.some(c => c.playable));
   g.action(1, { type: 'end' }); g.players[0].hp = 20; g.action(0, { type: 'end' });
   assert.strictEqual(g.players[0].hp, 20, 'wyrok tylko raz');
+  assert(g.view(1).me.hand.some(c => c.name === 'Jade Jade Jade' && c.playable), 'w kolejnej turze blokada znika');
 });
 
 test('dziennik walki zapisuje zagrania, piosenki z celem i ataki z obrażeniami', () => {

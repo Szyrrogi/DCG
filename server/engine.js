@@ -347,6 +347,7 @@ class Game {
   }
 
   canPay(p, cost) {
+    if (p.spellLock) return false;
     for (const c of CITIES) if (this.available(p, c) < cost[c]) return false;
     const rest = CITIES.reduce((s, c) => s + this.available(p, c) - cost[c], 0);
     return rest >= cost.D;
@@ -809,6 +810,7 @@ class Game {
     const p = this.players[i];
     for (const c of CITIES) p.mana[c].used = 0;
     p.manaActionUsed = false;
+    p.spellLock = false;
     
     if (p.juliiTurns > 0) p.juliiTurns--;
     p.turnsTaken = (p.turnsTaken || 0) + 1;
@@ -850,6 +852,8 @@ class Game {
       this.say(`${p.name} rzuca ${sp.name}!`);
       this.runEffect(sp.effect, sp.value, i, false, null);
       this.closeEvent();
+      // Wyrok kosztuje 1 – w tej turze nie da się już nic zagrać, a zbudowana mana idzie na Wyrok
+      p.spellLock = true;
     }
     this.checkEnd();
   }
@@ -909,6 +913,7 @@ class Game {
         if (p.manaActionUsed) throw new GameError('Już rozbudowałeś miasto w tej turze.');
         if (!this.addManaProgress(p, a.city)) throw new GameError('To miasto jest już w pełni rozbudowane.');
         p.manaActionUsed = true;
+        if (p.spellLock) p.mana[a.city].used = p.mana[a.city].lvl;
         break;
       }
       case 'play': {

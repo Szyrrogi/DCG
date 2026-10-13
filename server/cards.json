@@ -976,7 +976,7 @@
     "desc": "Niszczy stronnika, przeciwnik dobiera 2 karty.",
     "rarity": 1,
     "cost": {
-      "T": 1,
+      "T": 2,
       "W": 0,
       "B": 0,
       "D": 0
@@ -1515,13 +1515,13 @@
   },
   {
     "name": "Wyrok Kunnera",
-    "desc": "Ustaw zdrowie wrogiego bohatera na 6",
+    "desc": "Ustaw zdrowie wrogiego bohatera na 6. Zużywa całą turę rzucającego",
     "rarity": 3,
     "cost": {
       "T": 0,
       "W": 0,
       "B": 0,
-      "D": 0
+      "D": 1
     },
     "type": "spell",
     "effect": "SetEnemyHealthTo",

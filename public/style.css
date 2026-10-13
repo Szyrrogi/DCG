@@ -178,14 +178,16 @@ table.rank { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
 .rules { padding-left: 18px; line-height: 1.5; }
 
 /* ---------- walka ---------- */
-.battle { position: absolute; inset: 0; display: grid; grid-template-columns: 200px 1fr 230px; grid-template-rows: 1fr auto; grid-template-areas: "opp board log" "me hand log"; gap: 0; }
+.battle { position: absolute; inset: 0; display: grid; grid-template-columns: 200px 1fr 84px; grid-template-rows: 1fr auto; grid-template-areas: "opp board log" "me hand log"; gap: 0; }
 .side { display: flex; flex-direction: column; gap: 8px; padding: 10px; }
 .side.opp { grid-area: opp; }
 .side.me { grid-area: me; justify-content: flex-end; }
 .board-wrap { grid-area: board; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 6px 0; min-height: 0; }
 .hand { grid-area: hand; display: flex; justify-content: center; align-items: flex-end; padding: 0 10px 8px; min-height: calc(var(--cw) * 1.4 * .62); }
 .log { grid-area: log; background: rgba(15,10,6,.82); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
-.log-head { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid var(--line); }
+.log-head { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 4px; border-bottom: 1px solid var(--line); }
+.log-head .btn { width: 44px; padding: 5px 0; }
+.hs-title { font-family: var(--font-head); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--gold); text-align: center; padding: 6px 0 2px; }
 #log-body { flex: 1; overflow: auto; padding: 8px 10px; font-size: 12.5px; line-height: 1.45; color: #e2d3ba; }
 #log-body div { padding: 2px 0; border-bottom: 1px dashed rgba(214,170,92,.1); }
 
@@ -282,9 +284,7 @@ table.rank { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
 
 /* ---------- responsywność ---------- */
 @media (max-width: 1100px) {
-  .battle { grid-template-columns: 170px 1fr; grid-template-areas: "opp board" "me hand"; }
-  .log { position: fixed; right: 8px; top: 8px; width: 240px; max-height: 40vh; border: 1px solid var(--line); border-radius: 10px; z-index: 20; }
-  .log.collapsed #log-body { display: none; }
+  .battle { grid-template-columns: 170px 1fr 66px; grid-template-areas: "opp board log" "me hand log"; }
   .hero { width: 96px; height: 112px; }
   :root { --cw: 120px; --uw: 80px; }
   .hand { --cw: 128px; }
@@ -315,10 +315,9 @@ table.rank { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
   .board { gap: 6px; padding: 4px; flex-wrap: wrap; min-height: calc(var(--uw) * 1.3 + 8px); }
   .hand { overflow-x: auto; justify-content: flex-start; padding-top: 34px; }
   .hand .card { margin: 0 -10px; flex-shrink: 0; }
-  .log { width: 220px; font-size: 11px; }
-  .log.collapsed { width: auto; }
-  .log.collapsed .log-head { padding: 4px 6px; gap: 6px; }
-  .log.collapsed .log-head b { font-size: 12px; }
+  .battle { grid-template-columns: minmax(0, 1fr) 46px; grid-template-areas: "opp log" "board log" "me log" "hand log"; }
+  .log-head .btn { width: 36px; font-size: 12px; }
+  .hs-title { display: none; }
   .side.opp .pile { display: none; }
   .topbar { gap: 8px; padding: 8px; }
   .tabs { order: 3; flex-basis: 100%; justify-content: space-between; }
@@ -531,7 +530,7 @@ table.admin { width: 100%; border-collapse: collapse; }
 
 /* ================= historia walki (jak w Hearthstone) ================= */
 .board-wrap { position: relative; }
-.hs-log { position: absolute; left: 56px; top: 8px; bottom: 8px; width: 54px; display: flex; flex-direction: column; gap: 6px; overflow: hidden; z-index: 6;
+.hs-log { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 6px 0; overflow: hidden;
   -webkit-mask-image: linear-gradient(#000 80%, transparent); mask-image: linear-gradient(#000 80%, transparent); }
 .hl-tile { position: relative; flex-shrink: 0; width: 50px; height: 50px; border-radius: 50%; background: #1c130c center 20%/cover no-repeat; border: 3px solid #8a8f99; cursor: pointer; box-shadow: 0 3px 8px rgba(0,0,0,.7); transition: transform .12s; }
 .hl-tile.mine { border-color: #4fa3ff; box-shadow: 0 0 0 1px #0d2a4d, 0 3px 8px rgba(0,0,0,.7); }
@@ -570,12 +569,11 @@ table.admin { width: 100%; border-collapse: collapse; }
 .hp-hero .nm { font-size: 12px; font-weight: 700; }
 .hp-hero .cardback.big { width: 70px; height: 98px; margin: 0; }
 .hp-note { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
-@media (max-width: 1100px) { .hs-log { width: 44px; left: 52px; } .hl-tile { width: 40px; height: 40px; } }
+@media (max-width: 1100px) { .hl-tile { width: 44px; height: 44px; } }
 @media (max-width: 720px) {
-  .hs-log { left: 2px; top: 2px; bottom: 2px; width: 34px; gap: 4px; }
+  .hs-log { gap: 4px; }
   .hl-tile { width: 32px; height: 32px; border-width: 2px; }
   .hl-ic { width: 16px; height: 16px; font-size: 9px; right: -4px; }
-  .board { padding-left: 38px; }
   .hp-card { --cw: 110px; } .hp-targets, .hp-targets .hp-card { --cw: 74px; }
 }
 

@@ -1070,8 +1070,6 @@ function renderGame() {
   const anyMove = canAct && (me.hand.some(c => c.playable) || me.board.some(u => u.canAttack) || (!me.manaActionUsed && ['T', 'W', 'B'].some(c => me.mana[c].lvl < 4)));
   end.classList.toggle('nomoves', canAct && !anyMove);
   $('#hand-me').classList.toggle('their-turn', !canAct);
-  $('#log-body').innerHTML = v.log.map(l => `<div>${esc(l)}</div>`).join('');
-  $('#log-body').scrollTop = 1e6;
   $('#btn-concede').disabled = v.over;
   $('#btn-concede').classList.toggle('hidden', !!v.spectator);
 
@@ -1203,8 +1201,6 @@ $('#btn-concede').onclick = e => {
   box.querySelector('#cq-yes').onclick = () => { act({ type: 'concede' }); closeModal(); };
   box.querySelector('#cq-no').onclick = closeModal;
 };
-$('#log').addEventListener('click', e => { if (innerWidth <= 1100 && e.target.closest('.log-head') && !e.target.closest('button')) $('#log').classList.toggle('collapsed'); });
-if (innerWidth <= 1100) $('#log').classList.add('collapsed');
 
 function renderMulligan(v) {
   const box = $('#mulligan');
@@ -1356,7 +1352,7 @@ const HL_ICON = { play: '', spell: '✦', attack: '⚔', trigger: '⚡', fatigue
 function evVisible(e) { return e.kind !== 'turn' || (e.res && e.res.length); }
 function renderHsLog(v) {
   const el = $('#hs-log'); if (!el) return;
-  const evs = (v.events || []).filter(evVisible).slice(-12).reverse();
+  const evs = (v.events || []).filter(evVisible).slice(-20).reverse();
   const key = evs.map(e => e.id + ':' + e.res.length).join(',') + '|' + v.mySeat;
   if (el.dataset.key === key) return;
   const fresh = new Set(evs.map(e => e.id).filter(id => !(el.dataset.ids || '').split(',').includes(String(id))));

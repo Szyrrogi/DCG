@@ -58,18 +58,19 @@ rozjazdów jak przy synchronizacji Photonem. Działa na komputerze i telefonie.
 - Odrzucone jednostki trafiają na cmentarz jako polegli – Agnieszka może je wskrzesić.
 - **Wcześniejsza wypłata bonusu**: przy 3/5 pokonanych możesz wypłacić 30 złota, przy 4/5 – 60 złota
   (przycisk w zakładce Graj). Wypłata resetuje serię.
-- **Przygoda** (zakładka *Przygoda*): trzech bossów sterowanych przez AI. Pierwsze pokonanie bossa daje
+- **Przygoda** (zakładka *Przygoda*): trzech bossów sterowanych przez AI. W grze z botem zawsze zaczyna gracz. Pierwsze pokonanie bossa daje
   **+30 złota**, każde kolejne **+10 złota**.
   - **Cas-Borg** – startuje z 40 zdrowia; talia pali własne HP (Eva, Moja Przygoda) i bije Mocą pieśni.
-  - **Kunner** – w swojej pierwszej turze rzuca *Wyrok Kunnera* (Twoje zdrowie = 6). Tej karty nie ma
+  - **Kunner** – w swojej pierwszej turze rzuca *Wyrok Kunnera* (Twoje zdrowie = 6, koszt 1 – w tej turze
+    Kunner nie zagra już nic więcej). Tej karty nie ma
     w kolekcji, paczkach, drafcie ani wytwarzaniu. Talia: najszybsze dissy i szarża.
   - **Baron Tczewa** – zaczyna z 3 kulami Tczewa i od pierwszej tury stawia ciężkie jednostki.
   - **Trener** – bot treningowy ze zwykłą talią kontrolną, **+5 złota** za każdą wygraną.
   Gry z botami nie liczą się do rankingu ani serii 5 pokonanych.
-- **Dziennik walki** jak w Hearthstone: pasek ikon po lewej stronie planszy (niebieska ramka = Ty,
-  czerwona = przeciwnik). Najedź (lub stuknij), żeby zobaczyć zagraną kartę/zaklęcie/atak, cel
-  i skutki: obrażenia, leczenie, śmierci, wzmocnienia, odrzucone karty. Tekstowy dziennik po prawej
-  też zapisuje każde zagranie i atak.
+- **Historia walki** jak w Hearthstone: pasek ikon po prawej stronie ekranu (niebieska ramka = Ty,
+  czerwona = przeciwnik), zamiast dawnego tekstowego dziennika. Najedź (lub stuknij), żeby zobaczyć
+  zagraną kartę/zaklęcie/atak, cel i skutki: obrażenia, leczenie, śmierci, wzmocnienia, odrzucone karty.
+- **Karo As** kosztuje 2 many Tczewa.
 - **Cmentarz**: kliknij ☠ przy talii (swojej lub przeciwnika), żeby zobaczyć karty na cmentarzu obu graczy.
 - **Draft** jest darmowy.
 - **Tryb obserwatora**: przy graczu, który gra, jest przycisk „👀 Oglądaj”. Widzisz wtedy planszę i karty

@@ -266,6 +266,7 @@ function startBotGame(u, deck, bot) {
   ]);
   g.bot = bot.id;
   g.isDraft = false;
+  g.current = 0; // z botem zawsze zaczyna gracz
   g.start();
   g.mulliganEndsAt = Date.now() + 40_000;
   g.turnFresh = true;

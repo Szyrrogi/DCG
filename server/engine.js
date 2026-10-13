@@ -415,7 +415,7 @@ class Game {
     return true;
   }
 
-  summon(i, card, { battlecry = true, fromPlay = false, fromGrave = false } = {}) {
+  summon(i, card, { battlecry = true, fromPlay = false, fromGrave = false, pos = null } = {}) {
     const p = this.players[i];
     if (p.board.length >= BOARD_LIMIT) { this.say(`Plansza pełna – ${card.name} przepada.`); p.grave.push(card.name); return null; }
     const d = this.data(card);
@@ -436,7 +436,8 @@ class Game {
         unit.atk += 2; unit.hp -= 1; unit.maxHp -= 1;
     }
 
-    p.board.push(unit);
+    if (Number.isInteger(pos) && pos >= 0 && pos < p.board.length) p.board.splice(pos, 0, unit);
+    else p.board.push(unit);
     this.uidInfo[unit.uid] = { name: unit.name, seat: i };
     this.fx.push({ type: 'summon', uid: unit.uid });
     if (!fromPlay) this.say(`${card.name} pojawia się na planszy ${p.name}.`);
@@ -963,7 +964,7 @@ class Game {
           else if (tu) this.ev.target = { name: tu.name, uid: tu.uid, seat: this.opp(i) };
         }
         if (d.type === 'unit') {
-          this.summon(i, card, { fromPlay: true, fromGrave });
+          this.summon(i, card, { fromPlay: true, fromGrave, pos: Number.isInteger(a.pos) ? a.pos : null });
           if (d.endsTurn) this.autoEndTurn = true;
         } else {
           this.runEffect(d.effect, d.value, i, true, null, a.target);

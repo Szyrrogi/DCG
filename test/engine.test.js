@@ -417,6 +417,31 @@ test('Mordekaiser działa jak dodanie kryształu many (wybór miasta, bez zużyc
   assert.strictEqual(p.mana.T.lvl, 2); assert.strictEqual(p.mana.T.prog, 1);
 });
 
+test('Widz z devszyr +1/+1 i Szarża, Alternatywka +1 ataku i Prowokacja (z informatykiem w ręce)', () => {
+  const g = newGame(); const i = g.current; giveMana(g, i);
+  g.players[i].hand.push(g.newCard('Ksawery'));
+  const w = put(g, i, 'Widz z devszyr'); g.action(i, { type: 'play', uid: w.uid });
+  const wu = g.players[i].board.find(u => u.uid === w.uid);
+  assert.strictEqual(wu.atk, 2); assert.strictEqual(wu.hp, 2); assert.strictEqual(wu.attacksLeft, 1);
+  const a = put(g, i, 'Alternatywka'); g.action(i, { type: 'play', uid: a.uid });
+  const au = g.players[i].board.find(u => u.uid === a.uid);
+  assert.strictEqual(au.atk, 2); assert.strictEqual(au.hp, 3); assert(au.taunt);
+});
+
+test('jednostkę można postawić w wybranym miejscu (np. obok Rowera)', () => {
+  const g = newGame(); const i = g.current; giveMana(g, i); const p = g.players[i];
+  const a = g.summon(i, g.newCard('Kubba'), { battlecry: false });
+  const b = g.summon(i, g.newCard('Ramus'), { battlecry: false });
+  const r = put(g, i, 'Rower');
+  g.action(i, { type: 'play', uid: r.uid, pos: 1 });
+  assert.deepStrictEqual(p.board.map(u => u.name), ['Kubba', 'Rower', 'Ramus']);
+  assert.strictEqual(g.attackOf(i, a), 4); assert.strictEqual(g.attackOf(i, b), 4);
+  const k = put(g, i, 'Kubba'); g.action(i, { type: 'play', uid: k.uid, pos: 0 });
+  assert.strictEqual(p.board[0].uid, k.uid);
+  const z = put(g, i, 'Ramus'); g.action(i, { type: 'play', uid: z.uid, pos: 99 });
+  assert.strictEqual(p.board[p.board.length - 1].uid, z.uid, 'zła pozycja = na koniec');
+});
+
 test('Ostatni pedał: +3/+3 tylko dla wybranej jednostki albo zniszczenie wybranego Lewca', () => {
   const g = newGame(); const i = g.current, o = 1 - i; giveMana(g, i);
   const a = g.summon(i, g.newCard('Kubba'), { battlecry: false });

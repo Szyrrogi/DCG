@@ -602,3 +602,13 @@ table.admin { width: 100%; border-collapse: collapse; }
 @media (max-width: 560px) { .boss { flex-direction: column; align-items: center; text-align: center; } .boss-foot { justify-content: center; flex-wrap: wrap; } .adv-list { grid-template-columns: 1fr; } }
 .unit.pick-target { animation: pickt 1s infinite; cursor: crosshair; }
 @keyframes pickt { 0%, 100% { box-shadow: 0 0 0 3px var(--gold), 0 0 12px var(--gold); } 50% { box-shadow: 0 0 0 5px #fff3c4, 0 0 30px var(--gold); transform: translateY(-4px); } }
+
+/* ================= ustawianie jednostek ================= */
+#board-me .slot { width: 26px; align-self: stretch; margin: 0 -6px; border-radius: 12px; border: 2px dashed rgba(242,193,78,.55); background: rgba(242,193,78,.08); display: grid; place-items: center; cursor: pointer; color: var(--gold); font-weight: 800; transition: width .15s, background .15s; flex-shrink: 0; z-index: 2; }
+#board-me .slot:hover { width: calc(var(--uw) * .7); background: rgba(242,193,78,.25); border-style: solid; box-shadow: 0 0 18px rgba(242,193,78,.5); }
+#board-me.placing .unit { opacity: .85; }
+#board-me.drop-over { background: rgba(95,208,104,.08); outline: 2px dashed rgba(95,208,104,.45); }
+.drop-marker { width: 8px; align-self: stretch; margin: 0 -2px; border-radius: 6px; background: var(--gold); box-shadow: 0 0 16px var(--gold); flex-shrink: 0; }
+.drag-ghost { position: fixed; z-index: 50; pointer-events: none; transform: translate(-50%, -60%) rotate(-4deg) scale(.85); --cw: 130px; filter: drop-shadow(0 12px 18px rgba(0,0,0,.7)); }
+.hand .card.dragging { opacity: .35; }
+@media (max-width: 720px) { #board-me .slot { width: 20px; } }

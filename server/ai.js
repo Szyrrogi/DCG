@@ -75,6 +75,11 @@ function evaluate(g, seat) {
 }
 
 // ---------- ruchy ----------
+// pozycja ma znaczenie tylko przy Rowerze (bonus dla sąsiadów)
+function wantsPosition(g, seat, d) {
+  const b = g.players[seat].board;
+  return b.length > 0 && (d.passive === 'AdjacentBuff' || b.some(u => BY_NAME[u.name].passive === 'AdjacentBuff'));
+}
 function legalMoves(g, seat) {
   const v = g.view(seat), o = 1 - seat, moves = [];
   for (const c of v.me.hand) {
@@ -86,6 +91,8 @@ function legalMoves(g, seat) {
     } else if (d.target === 'enemyUnit') {
       if (!g.players[o].board.length) { if (d.type === 'unit') moves.push({ type: 'play', uid: c.uid }); continue; }
       for (const u of g.players[o].board) moves.push({ type: 'play', uid: c.uid, target: u.uid });
+    } else if (d.type === 'unit' && wantsPosition(g, seat, d)) {
+      for (let pos = 0; pos <= g.players[seat].board.length; pos++) moves.push({ type: 'play', uid: c.uid, pos });
     } else moves.push({ type: 'play', uid: c.uid });
   }
   const taunts = g.players[o].board.filter(u => BY_NAME[u.name].taunt || u.taunt);

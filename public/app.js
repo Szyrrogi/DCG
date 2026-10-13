@@ -1052,7 +1052,13 @@ function renderGame() {
     : '<div class="cardback"></div>'.repeat(op.handCount);
   if (v.spectator) $$('#opp-hand .card').forEach(el => attachPreview(el, el.dataset.name));
   $('#board-opp').innerHTML = op.board.map(u => unitHtml(u, false, v)).join('');
-  $('#board-me').innerHTML = me.board.map(u => unitHtml(u, true, v)).join('');
+  const placing = S.sel && S.sel.kind === 'place' && canAct;
+  if (placing) {
+    const slots = boardSlots(me.board.length), units = me.board.map(u => unitHtml(u, true, v));
+    $('#board-me').innerHTML = slots.map((s, k) => s + (units[k] || '')).join('');
+  } else $('#board-me').innerHTML = me.board.map(u => unitHtml(u, true, v)).join('');
+  $('#board-me').classList.toggle('placing', !!placing);
+  $$('#board-me .slot').forEach(el => el.onclick = e => { e.stopPropagation(); placeUnit(S.sel.uid, +el.dataset.pos); });
   const n = me.hand.length;
   $('#hand-me').style.setProperty('--hm', n <= 5 ? '4px' : n <= 7 ? '-14px' : '-34px');
   const discarding = v.pending && v.pending.mine && v.pending.type === 'discard';
@@ -1076,7 +1082,8 @@ function renderGame() {
   $$('#mana-me [data-mana]').forEach(b => b.onclick = e => { e.stopPropagation(); act({ type: 'mana', city: b.dataset.mana }); });
   $$('#hand-me .card').forEach(el => {
     attachPreview(el, el.dataset.name);
-    el.onclick = e => { e.stopPropagation(); onHandClick(el.dataset.uid); };
+    el.onclick = e => { e.stopPropagation(); if (S.dragEnded && Date.now() - S.dragEnded < 300) return; onHandClick(el.dataset.uid); };
+    if (!TOUCH) enableDrag(el);
   });
   $$('#board-me .unit').forEach(el => {
     attachPreview(el, el.dataset.name);
@@ -1102,6 +1109,7 @@ function updateHint() {
   else if (S.sel && S.sel.kind === 'attacker') t = v && v.opp.board.some(x => x.taunt) ? 'Najpierw musisz zaatakować jednostkę z Prowokacją 🛡' : 'Wybierz cel ataku: wrogą jednostkę lub bohatera';
   else if (S.sel && S.sel.kind === 'spell') t = S.sel.any ? 'Wybierz cel: wrogą jednostkę lub bohatera' : 'Wybierz wrogą jednostkę';
   else if (S.sel && S.sel.kind === 'preview') t = 'Stuknij ponownie, aby zagrać';
+  else if (S.sel && S.sel.kind === 'place') t = 'Wybierz miejsce na planszy (＋) – albo przeciągnij kartę';
   h.textContent = t; h.classList.toggle('show', !!t);
 }
 
@@ -1121,18 +1129,77 @@ function onHandClick(uid) {
   if (!v.myTurn) { toast('Poczekaj na swoją turę.'); S.sel = null; renderGame(); return; }
   if (!card.playable) { toast('Nie stać Cię na tę kartę – rozbuduj miasta (+).', true); S.sel = null; renderGame(); return; }
   if (data.target === 'enemyAny') { S.sel = { kind: 'spell', uid, any: true }; renderGame(); return; }
+  if (data.type === 'unit' && v.me.board.length) { S.sel = { kind: 'place', uid }; renderGame(); return; }
   if (data.target === 'enemyUnit' && v.opp.board.length) { S.sel = { kind: 'spell', uid }; renderGame(); return; }
   S.sel = null;
   playCard(uid);
 }
 
-function playCard(uid, target) {
+// przeciąganie jednostki z ręki na wybrane miejsce na planszy
+function dropIndex(x) {
+  const units = $$('#board-me .unit');
+  let k = 0;
+  for (const u of units) { const r = u.getBoundingClientRect(); if (x > r.left + r.width / 2) k++; }
+  return k;
+}
+function enableDrag(el) {
+  el.onpointerdown = e => {
+    const v = S.view, uid = el.dataset.uid;
+    if (e.button !== 0 || !v || !v.myTurn || v.pending || v.spectator) return;
+    const card = v.me.hand.find(c => c.uid === uid);
+    if (!card || !card.playable || S.byName[card.name].type !== 'unit') return;
+    const sx = e.clientX, sy = e.clientY;
+    let ghost = null, marker = null;
+    const move = ev => {
+      if (!ghost) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 10) return;
+        hidePreview();
+        ghost = document.createElement('div'); ghost.className = 'drag-ghost'; ghost.innerHTML = cardHtml(card.name);
+        document.body.appendChild(ghost); el.classList.add('dragging');
+        marker = document.createElement('div'); marker.className = 'drop-marker';
+      }
+      ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px';
+      const b = $('#board-me').getBoundingClientRect();
+      const over = ev.clientY < b.bottom + 40 && ev.clientY > b.top - 60;
+      $('#board-me').classList.toggle('drop-over', over);
+      if (over) {
+        const units = $$('#board-me .unit'), k = dropIndex(ev.clientX);
+        if (units[k]) $('#board-me').insertBefore(marker, units[k]); else $('#board-me').appendChild(marker);
+      } else marker.remove();
+    };
+    const up = ev => {
+      removeEventListener('pointermove', move); removeEventListener('pointerup', up);
+      if (!ghost) return;
+      S.dragEnded = Date.now();
+      ghost.remove(); el.classList.remove('dragging');
+      const over = $('#board-me').classList.contains('drop-over');
+      $('#board-me').classList.remove('drop-over');
+      const k = dropIndex(ev.clientX); marker.remove();
+      if (over) placeUnit(uid, k); else renderGame();
+    };
+    addEventListener('pointermove', move); addEventListener('pointerup', up);
+  };
+}
+
+// wybrano miejsce na planszy dla jednostki
+function placeUnit(uid, pos) {
+  const v = S.view; const card = v && v.me.hand.find(c => c.uid === uid); if (!card) return;
+  const data = S.byName[card.name];
+  if (data.target === 'enemyUnit' && v.opp.board.length) { S.sel = { kind: 'spell', uid, pos }; renderGame(); return; }
+  S.sel = null; renderGame();
+  playCard(uid, undefined, pos);
+}
+function boardSlots(n) {
+  return Array.from({ length: n + 1 }, (_, k) => `<div class="slot" data-pos="${k}"><span>＋</span></div>`);
+}
+
+function playCard(uid, target, pos) {
   const v = S.view; const card = v.me.hand.find(c => c.uid === uid); if (!card) return;
   const cost = card.cost, m = v.me.mana;
   const rest = {}; let restSum = 0, cities = 0;
   for (const c of ['T', 'W', 'B']) { rest[c] = Math.max(0, m[c].lvl - m[c].used - cost[c]); restSum += rest[c]; if (rest[c] > 0) cities++; }
-  if (cost.D > 0 && cities >= 2 && restSum > cost.D) return showPay(card, cost, rest, pay => act({ type: 'play', uid, target, pay }));
-  act({ type: 'play', uid, target });
+  if (cost.D > 0 && cities >= 2 && restSum > cost.D) return showPay(card, cost, rest, pay => act({ type: 'play', uid, target, pay, pos }));
+  act({ type: 'play', uid, target, pos });
 }
 function showPay(card, cost, rest, done) {
   const pay = { T: 0, W: 0, B: 0 };
@@ -1158,6 +1225,7 @@ function onMyUnitClick(uid) {
   if (S.view && S.view.spectator) return;
   const v = S.view; if (!v || v.over) return;
   if (pendingTarget(v)) { if (v.pending.options.includes(uid)) { hidePreview(); act({ type: 'choose', uid }); } else toast('Wybierz jedną z podświetlonych jednostek.'); return; }
+  if (S.sel && S.sel.kind === 'place') { toast('Kliknij jedno z miejsc oznaczonych ＋.'); return; }
   const u = v.me.board.find(x => x.uid === uid);
   if (TOUCH && !(S.sel && S.sel.uid === uid) && !(v.myTurn && u.canAttack)) { showTouchPreview(u.name); return; }
   if (!v.myTurn) return toast('Poczekaj na swoją turę.');
@@ -1174,7 +1242,7 @@ function onEnemyClick(target) {
     if (taunts.length && !taunts.some(x => x.uid === target)) { toast('Najpierw musisz zaatakować jednostkę z Prowokacją 🛡', true); return; }
     act({ type: 'attack', uid: S.sel.uid, target }); S.sel = null; renderGame(); return;
   }
-  if (S.sel && S.sel.kind === 'spell' && (target !== 'hero' || S.sel.any)) { const uid = S.sel.uid; S.sel = null; renderGame(); playCard(uid, target); return; }
+  if (S.sel && S.sel.kind === 'spell' && (target !== 'hero' || S.sel.any)) { const { uid, pos } = S.sel; S.sel = null; renderGame(); playCard(uid, target, pos); return; }
   if (TOUCH && target !== 'hero') { const u = v.opp.board.find(x => x.uid === target); if (u) showTouchPreview(u.name); }
 }
 

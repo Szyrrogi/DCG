@@ -71,6 +71,9 @@ rozjazdów jak przy synchronizacji Photonem. Działa na komputerze i telefonie.
   czerwona = przeciwnik), zamiast dawnego tekstowego dziennika. Najedź (lub stuknij), żeby zobaczyć
   zagraną kartę/zaklęcie/atak, cel i skutki: obrażenia, leczenie, śmierci, wzmocnienia, odrzucone karty.
 - **Karo As** kosztuje 2 many Tczewa.
+- **Ustawianie jednostek**: zagrywana jednostka nie ląduje już zawsze z prawej. Kliknij kartę i wybierz
+  miejsce ＋ między jednostkami albo przeciągnij kartę w wybrane miejsce na planszy (ważne np. przy Rowerze).
+  AI też ustawia jednostki obok Rowera.
 - **Cmentarz**: kliknij ☠ przy talii (swojej lub przeciwnika), żeby zobaczyć karty na cmentarzu obu graczy.
 - **Draft** jest darmowy.
 - **Tryb obserwatora**: przy graczu, który gra, jest przycisk „👀 Oglądaj”. Widzisz wtedy planszę i karty

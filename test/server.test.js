@@ -57,7 +57,11 @@ async function buildDeck(c) {
 // prosta "sztuczna inteligencja": gra karty, rozbudowuje miasta, bije w twarz
 function chooseMove(v) {
   const me = v.me;
-  if (v.pending && v.pending.mine) return v.pending.type === 'discard' ? { type: 'choose', uid: me.hand[0].uid } : { type: 'choose', name: v.pending.options[0] };
+  if (v.pending && v.pending.mine) {
+    if (v.pending.type === 'discard') return { type: 'choose', uid: me.hand[0].uid };
+    if (v.pending.type === 'target') return { type: 'choose', uid: v.pending.options[0] };
+    return { type: 'choiceIndex', index: 0 };
+  }
   if (!me.manaActionUsed) { const c = ['T', 'W', 'B'].sort((a, b) => me.mana[a].lvl - me.mana[b].lvl)[0]; if (me.mana[c].lvl < 4) return { type: 'mana', city: c }; }
   const p = me.hand.find(c => c.playable);
   if (p) return { type: 'play', uid: p.uid, target: v.opp.board[0] && v.opp.board[0].uid };

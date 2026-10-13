@@ -4,10 +4,11 @@ const assert = require('assert');
 const { Game, GameError, CARDS, BY_NAME, BOARD_LIMIT, HAND_LIMIT } = require('../server/engine');
 
 const allNames = CARDS.map(c => c.name);
+const PLAYABLE = CARDS.filter(c => !c.token && !c.hidden);
 function randomDeck() {
   const d = [];
   while (d.length < 20) {
-    const c = CARDS[Math.floor(Math.random() * CARDS.length)];
+    const c = PLAYABLE[Math.floor(Math.random() * PLAYABLE.length)];
     const max = c.rarity === 1 ? 3 : 1;
     if (d.filter(x => x === c.name).length < max) d.push(c.name);
   }
@@ -28,7 +29,8 @@ function pickPending(g) {
   const q = g.pending; if (!q) return;
   const p = g.players[q.player];
   if (q.type === 'discard') g.action(q.player, { type: 'choose', uid: p.hand[Math.floor(Math.random() * p.hand.length)].uid });
-  else g.action(q.player, { type: 'choose', name: q.options[Math.floor(Math.random() * q.options.length)] });
+  else if (q.type === 'target') g.action(q.player, { type: 'choose', uid: q.options[Math.floor(Math.random() * q.options.length)] });
+  else g.action(q.player, { type: 'choiceIndex', index: Math.floor(Math.random() * q.options.length) });
 }
 function giveMana(g, i, n = 4) { for (const c of ['T', 'W', 'B']) g.players[i].mana[c] = { lvl: n, prog: 0, used: 0 }; }
 function put(g, i, name) { const c = g.newCard(name); g.players[i].hand.push(c); return c; }
@@ -37,8 +39,15 @@ let passed = 0;
 function test(name, fn) { fn(); passed++; console.log('✓', name); }
 
 test('wszystkie efekty kart są obsługiwane', () => {
-  const known = ['', 'HealFriendlyHero', 'DamageEnemyHero', 'SummonGirlfriends', 'DestroyAllMinionsDiscardHand', 'SetHealthTo30', 'ResurrectFriendlyUnit', 'ChanceBuff', 'DrawCards', 'DrawNamedCard', 'DrawTwoWithTag', 'DamageAllExceptProgrammers', 'ReturnToHandRandom', 'ChargeDiscardTwo', 'BuffIfProgrammerInHand', 'AddRandomSpellToHand', 'OpponentDiscardsCard', 'DrawCardWithTag', 'DrawSpecificCard', 'Draw5Spells', 'BuffIfProgrammerInHandHealth', 'FreezeAllEnemies', 'DamageRandomEnemy3Times', 'DestroyTargetMinion', 'SummonRandomUnit', 'DamageAllEnemies', 'DamageAndDiscard', 'IncreaseBydgoszczMana', 'DiscardCardFromHand', 'ReturnFriendlyToHand', 'BuffIfProgrammerInHandBoth', 'BuffPerCardInHand', 'SetEnemyHealthToYours', 'DamageSelfAndDraw', 'DamageBothHeroes'];
-  for (const c of CARDS) assert(known.includes(c.effect), 'brak efektu ' + c.effect);
+  const known = ['', 'HealFriendlyHero', 'DamageEnemyHero', 'SummonGirlfriends', 'DestroyAllMinionsDiscardHand', 'SetHealthTo30', 'ResurrectFriendlyUnit', 'ChanceBuff', 'DrawCards', 'DrawNamedCard', 'DrawTwoWithTag', 'DamageAllExceptProgrammers', 'ReturnToHandRandom', 'ChargeDiscardTwo', 'BuffIfProgrammerInHand', 'AddRandomSpellToHand', 'OpponentDiscardsCard', 'DrawCardWithTag', 'DrawSpecificCard', 'Draw5Spells', 'BuffIfProgrammerInHandHealth', 'FreezeAllEnemies', 'DamageRandomEnemy3Times', 'DestroyTargetMinion', 'SummonRandomUnit', 'DamageAllEnemies', 'DamageAndDiscard', 'IncreaseBydgoszczMana', 'DiscardCardFromHand', 'ReturnFriendlyToHand', 'BuffIfProgrammerInHandBoth', 'BuffPerCardInHand', 'SetEnemyHealthToYours', 'DamageSelfAndDraw', 'DamageBothHeroes',
+    'BuffAndTauntIfProgrammerInHand', 'BuffAndChargeIfProgrammerInHand', 'ManaCrystal', 'TripleDamage3Turns', 'BothPlayersDraw2', 'DestroyAndOpponentDraws',
+    'SummonScalingSnake', 'SedoroChoice', 'DiscardAndDraw2', 'BuffGraveyard', 'AstarionChoice', 'BuffIfEnemyHasXayoo', 'SummonTwoCopies', 'HalveAttack3Random',
+    'SummonDragonsForProgrammers', 'DebuffLegends', 'DestroyTargetGirl', 'LastPedalChoice', 'DamageGrass', 'OlafChoice', 'SetEnemyHealthTo'];
+  const src = require('fs').readFileSync(require.resolve('../server/engine'), 'utf8');
+  for (const c of CARDS) {
+    assert(known.includes(c.effect || ''), 'brak efektu ' + c.effect);
+    if (c.effect) assert(src.includes(`'${c.effect}'`), 'silnik nie obsługuje ' + c.effect);
+  }
 });
 
 test('start: zaczynający 3 karty + dobranie, drugi gracz 4 karty', () => {
@@ -197,7 +206,7 @@ test('Tael obniża koszt piosenek, Runia rośnie od piosenek', () => {
   assert.strictEqual(g.effectiveCost(i, s).D, 4);
   giveMana(g, i);
   g.action(i, { type: 'play', uid: s.uid });
-  assert.strictEqual(r.atk, 1); assert.strictEqual(r.hp, 4);
+  assert.strictEqual(r.atk, 1); assert.strictEqual(r.hp, 3);
 });
 
 test('Lian atakuje dwa razy', () => {
@@ -212,6 +221,7 @@ test('Lian atakuje dwa razy', () => {
 test('Olaf ma podwójny atak z Agnieszką', () => {
   const g = newGame(); const i = g.current;
   const olaf = g.summon(i, g.newCard('Olaf'), { battlecry: false });
+  olaf.olafMode = 1;   // wybór „Podwójny atak”
   assert.strictEqual(g.attackOf(i, olaf), 4);
   g.summon(i, g.newCard('Agnieszka'), { battlecry: false });
   assert.strictEqual(g.attackOf(i, olaf), 8);
@@ -229,9 +239,10 @@ test('zamrożenie blokuje atak w następnej turze', () => {
   g.action(o, { type: 'attack', uid: enemy.uid, target: 'hero' });
 });
 
-test('Ola z kajaków znika po 2 turach', () => {
+test('Ola z kajaków znika po 3 turach', () => {
   const g = newGame(); const i = g.current, o = 1 - i;
   g.summon(i, g.newCard('Ola z kajaków'), { battlecry: false });
+  g.action(i, { type: 'end' }); g.action(o, { type: 'end' });
   g.action(i, { type: 'end' }); g.action(o, { type: 'end' });
   assert(g.players[i].board.some(u => u.name === 'Ola z kajaków'));
   g.action(i, { type: 'end' }); g.action(o, { type: 'end' });
@@ -311,12 +322,12 @@ test('5000 losowych gier bez błędów i z zachowaniem limitów', () => {
       const i = g.current, p = g.players[i], o = g.players[1 - i];
       const moves = [];
       if (!p.manaActionUsed) for (const c of ['T', 'W', 'B']) if (p.mana[c].lvl < 4) moves.push({ type: 'mana', city: c });
-      for (const c of p.hand) if (g.canPay(p, g.effectiveCost(i, c)) && !(BY_NAME[c.name].type === 'unit' && p.board.length >= BOARD_LIMIT)) {
+      for (const c of p.hand) if (g.canPay(p, g.effectiveCost(i, c)) && !(BY_NAME[c.name].type === 'unit' && p.board.length >= BOARD_LIMIT) && g.castable(i, c)) {
         const tgt = o.board.length ? o.board[Math.floor(Math.random() * o.board.length)].uid : undefined;
         moves.push({ type: 'play', uid: c.uid, target: tgt });
       }
-      const taunts = o.board.filter(t => BY_NAME[t.name].taunt);
-      for (const u of p.board) if (u.attacksLeft > 0) {
+      const taunts = o.board.filter(t => BY_NAME[t.name].taunt || t.taunt);
+      for (const u of p.board) if (u.attacksLeft > 0 && BY_NAME[u.name].passive !== 'AutoAttackEndTurn') {
         if (!taunts.length) moves.push({ type: 'attack', uid: u.uid, target: 'hero' });
         for (const t of (taunts.length ? taunts : o.board)) moves.push({ type: 'attack', uid: u.uid, target: t.uid });
       }
@@ -387,12 +398,80 @@ test('Diss na Szymona bije wybraną jednostkę', () => {
   assert.strictEqual(u.hp, 3); assert.strictEqual(g.players[o].hp, 20);
 });
 
-test('Mordekaiser daje zużytą kulę Bydgoszczy', () => {
+test('Mordekaiser działa jak dodanie kryształu many (wybór miasta, bez zużycia rozbudowy)', () => {
   const g = newGame(); const i = g.current; const p = g.players[i];
   p.mana.T = { lvl: 2, prog: 0, used: 0 }; p.mana.W = { lvl: 2, prog: 0, used: 0 }; p.mana.B = { lvl: 0, prog: 0, used: 0 };
   const m = put(g, i, 'Mordekaiser');
   g.action(i, { type: 'play', uid: m.uid });
-  assert.strictEqual(p.mana.B.lvl, 1); assert.strictEqual(g.available(p, 'B'), 0);
+  assert.strictEqual(g.pending.type, 'choice');
+  const k = g.pending.options.findIndex(o => o.key === 'B');
+  g.action(i, { type: 'choiceIndex', index: k });
+  assert.strictEqual(p.mana.B.lvl, 1); assert.strictEqual(g.available(p, 'B'), 1);
+  assert.strictEqual(p.manaActionUsed, false);
+  g.action(i, { type: 'mana', city: 'B' });
+  assert.strictEqual(p.mana.B.lvl, 2);
+  // drugi poziom wymaga 2 postępów – Mordekaiser daje jeden
+  p.mana.T = { lvl: 2, prog: 0, used: 0 }; p.mana.W = { lvl: 2, prog: 0, used: 0 }; p.mana.B.used = 0;
+  g.action(i, { type: 'play', uid: put(g, i, 'Mordekaiser').uid });
+  g.action(i, { type: 'choiceIndex', index: g.pending.options.findIndex(o => o.key === 'T') });
+  assert.strictEqual(p.mana.T.lvl, 2); assert.strictEqual(p.mana.T.prog, 1);
+});
+
+test('Ostatni pedał: +3/+3 tylko dla wybranej jednostki albo zniszczenie wybranego Lewca', () => {
+  const g = newGame(); const i = g.current, o = 1 - i; giveMana(g, i);
+  const a = g.summon(i, g.newCard('Kubba'), { battlecry: false });
+  const b = g.summon(i, g.newCard('Ramus'), { battlecry: false });
+  const l1 = g.summon(o, g.newCard('Szymon'), { battlecry: false });
+  const l2 = g.summon(o, g.newCard('Błażej'), { battlecry: false });
+  g.action(i, { type: 'play', uid: put(g, i, 'Ostatni pedał').uid });
+  assert.strictEqual(g.pending.type, 'choice');
+  g.action(i, { type: 'choiceIndex', index: g.pending.options.findIndex(x => x.key === 'buff') });
+  assert.strictEqual(g.pending.type, 'target');
+  assert.throws(() => g.action(i, { type: 'choose', uid: l1.uid }), GameError);
+  g.action(i, { type: 'choose', uid: b.uid });
+  assert.strictEqual(b.atk, 5); assert.strictEqual(b.hp, 5);
+  assert.strictEqual(a.atk, 2); assert.strictEqual(a.hp, 2);
+  giveMana(g, i);
+  g.action(i, { type: 'play', uid: put(g, i, 'Ostatni pedał').uid });
+  g.action(i, { type: 'choiceIndex', index: g.pending.options.findIndex(x => x.key === 'kill') });
+  g.action(i, { type: 'choose', uid: l2.uid });
+  assert(!g.players[o].board.includes(l2) && g.players[o].board.includes(l1));
+});
+
+test('bossowie: 40 HP, 3 many Tczewa, Wyrok Kunnera w pierwszej turze', () => {
+  const deck = randomDeck();
+  const g = new Game('b', [{ userId: 'a', name: 'A', deck }, { userId: 'bot', name: 'Kunner', deck, hp: 40, startMana: { T: 3 }, openingSpell: 'Wyrok Kunnera' }]);
+  g.start(); g.action(0, { type: 'mulligan', uids: [] }); g.action(1, { type: 'mulligan', uids: [] });
+  assert.strictEqual(g.players[1].hp, 40);
+  assert.strictEqual(g.players[1].mana.T.lvl, 3);
+  if (g.current === 0) g.action(0, { type: 'end' });
+  assert.strictEqual(g.players[0].hp, 6);
+  assert(g.view(0).events.some(e => e.card === 'Wyrok Kunnera' && e.by === 1));
+  g.action(1, { type: 'end' }); g.players[0].hp = 20; g.action(0, { type: 'end' });
+  assert.strictEqual(g.players[0].hp, 20, 'wyrok tylko raz');
+});
+
+test('dziennik walki zapisuje zagrania, piosenki z celem i ataki z obrażeniami', () => {
+  const g = newGame(); const i = g.current, o = 1 - i; giveMana(g, i);
+  const enemy = g.summon(o, g.newCard('Kubba'), { battlecry: false });
+  g.action(i, { type: 'play', uid: put(g, i, 'Diss na Szymona').uid, target: enemy.uid });
+  if (g.pending) pickPending(g);
+  const ev = g.view(o).events.find(e => e.card === 'Diss na Szymona');
+  assert(ev && ev.kind === 'spell' && ev.by === i && ev.target.name === 'Kubba');
+  assert(ev.res.some(r => r.name === 'Kubba' && r.died));
+  const u = g.summon(i, g.newCard('67'), { battlecry: false }); u.attacksLeft = 1;
+  g.action(i, { type: 'attack', uid: u.uid, target: 'hero' });
+  const at = g.view(i).events.slice(-1)[0];
+  assert(at.kind === 'attack' && at.card === '67' && at.target.hero && at.res.some(r => r.hero && r.dmg === 6));
+});
+
+test('Springtrap z cmentarza: zagrywany właściwy egzemplarz', () => {
+  const g = newGame(); const i = g.current; const p = g.players[i]; giveMana(g, i);
+  p.grave = ['Kubba', 'Springtrap', 'Eva'];
+  const gp = g.view(i).me.hand.find(c => c.uid.startsWith('g_'));
+  g.action(i, { type: 'play', uid: gp.uid });
+  assert(p.board.some(u => u.name === 'Springtrap'));
+  assert.deepStrictEqual(p.grave, ['Kubba', 'Eva']);
 });
 
 test('Olaf dobiera Agnieszkę, Jeżyk obu, Siostra dwóch Lewców, :pp dwie karty', () => {
@@ -401,6 +480,7 @@ test('Olaf dobiera Agnieszkę, Jeżyk obu, Siostra dwóch Lewców, :pp dwie kart
   p.deck = ['Agnieszka', 'Julii', 'Jędrek', 'Szymon', 'Błażej', 'Eva', 'Eva'].map(n => g.newCard(n));
   const h0 = p.hand.length;
   g.action(i, { type: 'play', uid: put(g, i, 'Olaf').uid });
+  assert.strictEqual(g.pending.type, 'choice'); pickPending(g);
   g.action(i, { type: 'play', uid: put(g, i, 'Jeżyk').uid });
   g.action(i, { type: 'play', uid: put(g, i, 'Siostra Kirszenstein').uid });
   assert.deepStrictEqual(p.hand.slice(h0).map(c => c.name), ['Agnieszka', 'Julii', 'Jędrek', 'Szymon', 'Błażej']);
@@ -420,7 +500,7 @@ test('odrzucona jednostka może zostać wskrzeszona przez Agnieszkę', () => {
   assert(p.board.some(u => u.name === 'Massyn'));
 });
 
-test('Szymon: 2/2 i 50% na +2/+1, statystyki SzyRRogi 2/9, Kubba moc +2', () => {
+test('Szymon: 2/2 i 50% na +2/+1, statystyki SzyRRogi 2/9, Kubba moc +1', () => {
   let buffed = 0, plain = 0;
   for (let k = 0; k < 40; k++) {
     const g = newGame(); const i = g.current; giveMana(g, i);
@@ -429,7 +509,7 @@ test('Szymon: 2/2 i 50% na +2/+1, statystyki SzyRRogi 2/9, Kubba moc +2', () => 
     if (u.atk === 4 && u.hp === 3) buffed++; else if (u.atk === 2 && u.hp === 2) plain++; else assert.fail('złe statystyki');
   }
   assert(buffed > 0 && plain > 0);
-  assert.strictEqual(BY_NAME.SzyRRogi.atk, 2); assert.strictEqual(BY_NAME.SzyRRogi.hp, 9); assert.strictEqual(BY_NAME.Kubba.spellPower, 2);
+  assert.strictEqual(BY_NAME.SzyRRogi.atk, 2); assert.strictEqual(BY_NAME.SzyRRogi.hp, 9); assert.strictEqual(BY_NAME.Kubba.spellPower, 1);
 });
 
 test('wskrzeszona jednostka używa Okrzyku Bojowego', () => {

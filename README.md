@@ -44,8 +44,12 @@ rozjazdów jak przy synchronizacji Photonem. Działa na komputerze i telefonie.
   rusza sama). Wymienione karty wracają do talii.
 - **Odrzucanie**: gdy karta każe odrzucić Twoją kartę (Błażej, Grzesiek, Diss na Szymona), sam
   wybierasz którą – kliknij ją dwa razy. Julka (przeciwnik odrzuca) dalej działa losowo.
-- **Agnieszka** wskrzesza losową własną jednostkę, która naprawdę zginęła na planszy (nie odrzuconą
-  ani nie tę, która tylko „zniknęła”). Olaf zawsze ma pierwszeństwo.
+- **Agnieszka** od razu wskrzesza losową własną jednostkę, która zginęła (nie tę, która tylko „zniknęła”).
+  Olaf zawsze ma pierwszeństwo. Nie ma już okienka wyboru.
+- **Ostatni pedał**: wybierasz opcję, a potem klikasz *jedną* jednostkę – własną (+3/+3) albo wrogiego Lewca
+  (zniszczenie). Bez żadnego celu karty nie da się zagrać.
+- **Mordekaiser** działa jak dodatkowe kliknięcie „+”: wybierasz miasto i dostaje ono postęp rozbudowy,
+  a Twoja zwykła rozbudowa w tej turze dalej jest dostępna.
 - **Zuzia**: po zagraniu z ręki tura kończy się automatycznie.
 - **Wybór many**: gdy karta ma koszt dowolny i da się go zapłacić na kilka sposobów, pojawia się
   okienko, w którym wybierasz, z których miast wziąć manę (podpowiedź jest już ustawiona – wystarczy „Zagraj”).
@@ -54,6 +58,20 @@ rozjazdów jak przy synchronizacji Photonem. Działa na komputerze i telefonie.
 - Odrzucone jednostki trafiają na cmentarz jako polegli – Agnieszka może je wskrzesić.
 - **Wcześniejsza wypłata bonusu**: przy 3/5 pokonanych możesz wypłacić 30 złota, przy 4/5 – 60 złota
   (przycisk w zakładce Graj). Wypłata resetuje serię.
+- **Przygoda** (zakładka *Przygoda*): trzech bossów sterowanych przez AI. Pierwsze pokonanie bossa daje
+  **+30 złota**, każde kolejne **+10 złota**.
+  - **Cas-Borg** – startuje z 40 zdrowia; talia pali własne HP (Eva, Moja Przygoda) i bije Mocą pieśni.
+  - **Kunner** – w swojej pierwszej turze rzuca *Wyrok Kunnera* (Twoje zdrowie = 6). Tej karty nie ma
+    w kolekcji, paczkach, drafcie ani wytwarzaniu. Talia: najszybsze dissy i szarża.
+  - **Baron Tczewa** – zaczyna z 3 kulami Tczewa i od pierwszej tury stawia ciężkie jednostki.
+  - **Trener** – bot treningowy ze zwykłą talią kontrolną, **+5 złota** za każdą wygraną.
+  Gry z botami nie liczą się do rankingu ani serii 5 pokonanych.
+- **Dziennik walki** jak w Hearthstone: pasek ikon po lewej stronie planszy (niebieska ramka = Ty,
+  czerwona = przeciwnik). Najedź (lub stuknij), żeby zobaczyć zagraną kartę/zaklęcie/atak, cel
+  i skutki: obrażenia, leczenie, śmierci, wzmocnienia, odrzucone karty. Tekstowy dziennik po prawej
+  też zapisuje każde zagranie i atak.
+- **Cmentarz**: kliknij ☠ przy talii (swojej lub przeciwnika), żeby zobaczyć karty na cmentarzu obu graczy.
+- **Draft** jest darmowy.
 - **Tryb obserwatora**: przy graczu, który gra, jest przycisk „👀 Oglądaj”. Widzisz wtedy planszę i karty
   w rękach obu graczy; gracze dostają informację, że ktoś ogląda.
 - Rozłączenie w trakcie gry nie kończy meczu – wystarczy odświeżyć stronę.
@@ -130,8 +148,8 @@ budzi się sam).
 ## Testy
 
 ```
-npm test            # silnik walki: efekty kart + 5000 losowych gier
-npm run test:all    # + rynek wymiany + wytwarzanie + serwer (konta, admin, paczki, mecze, nagrody)
+npm test            # silnik walki (efekty kart + 5000 losowych gier) + AI
+npm run test:all    # + rynek, wytwarzanie, obserwator, serwer, przygoda (gry z botami i nagrody)
 ```
 Na GitHubie testy uruchamiają się same przy każdym pushu (zakładka **Actions → Testy**).
 
@@ -175,7 +193,9 @@ Poprawione rzeczy, które w Unity nie działały albo były niezgodne z opisem k
 
 ```
 server/index.js    serwer: konta, złoto, paczki, talie, lobby, WebSocket
-server/engine.js   silnik walki (zasady i efekty kart)
+server/engine.js   silnik walki (zasady, efekty kart, dziennik walki)
+server/ai.js       AI przeciwników (symuluje każdy ruch i ocenia planszę)
+server/bots.js     bossowie Przygody i bot treningowy (talie, zasady, nagrody)
 server/store.js    zapis danych: plik JSON albo Postgres (DATABASE_URL)
 server/cards.json  41 kart wyciągniętych z Assets/Resources/Cards
 public/            gra w przeglądarce (HTML/CSS/JS + grafiki z projektu)

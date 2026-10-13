@@ -5,7 +5,7 @@ const S = {
   view: null, prevView: null, sel: null,
   edit: null,
   reconnectDelay: 500, gameOverShown: false, avatarCards: {}, regAvatar: null, market: { offers: [], trades: [] }, mGive: null, mWant: null,
-  draft: null
+  draft: null, bots: [], lastBot: null
 };
 const CITY = { T: 'Tczew', W: 'Warszawa', B: 'Bydgoszcz' };
 const TOUCH = matchMedia('(hover: none) and (pointer: coarse)').matches;
@@ -146,6 +146,7 @@ function onMsg(m) {
     case 'auth':
       S.token = m.token; store.set('dcg_token', m.token);
       S.cards = m.cards; S.byName = Object.fromEntries(m.cards.map(c => [c.name, c]));
+      S.bots = m.bots || [];
       setMe(m.me);
       if (!S.view || S.view.over) show('hub');
       showRegister(false); $('#register-form').reset(); S.regAvatar = null;
@@ -187,6 +188,7 @@ function setTab(tab) {
   if (tab === 'admin') send({ t: 'adminList' });
   if (tab === 'market') renderMarket();
   if (tab === 'draft') send({ t: 'draftUpdate' });
+  if (tab === 'adventure') renderAdventure();
 }
 $$('.tab').forEach(b => b.onclick = () => setTab(b.dataset.tab));
 
@@ -199,7 +201,7 @@ function toast(msg, err = false) {
   setTimeout(() => el.remove(), Math.max(err ? 4200 : 3000, msg.length * 60));
 }
 function modal(html) { $('#modal-box').innerHTML = html; $('#modal').classList.remove('hidden'); return $('#modal-box'); }
-function closeModal() { $('#modal').classList.add('hidden'); $('#modal-box').classList.remove('pay-box'); S.craftOpen = null; }
+function closeModal() { $('#modal').classList.add('hidden'); $('#modal-box').classList.remove('pay-box', 'grave-box'); S.craftOpen = null; }
 
 async function renderLoginUsers() {
   let users = [];
@@ -215,7 +217,7 @@ async function loadAvatarCards() {
   try { const list = await (await fetch('api/cards')).json(); S.avatarCards = Object.fromEntries(list.map(c => [c.name, c])); } catch { }
 }
 function cardAvatarGrid(selected) {
-  const cards = Object.values(Object.keys(S.byName).length ? S.byName : S.avatarCards).sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+  const cards = Object.values(Object.keys(S.byName).length ? S.byName : S.avatarCards).filter(c => !c.hidden).sort((a, b) => a.name.localeCompare(b.name, 'pl'));
   return cards.map(c => `<button type="button" class="${selected === 'c:' + c.name ? 'sel' : ''}" data-av="c:${esc(c.name)}" title="${esc(c.name)}"><img class="cav" src="img/art/${c.art}" alt=""><span>${esc(c.name)}</span></button>`).join('');
 }
 async function showRegister(on) {
@@ -265,6 +267,7 @@ function setMe(me) {
   }
   renderDeckSelect();
   renderLobby();
+  if (!$('#tab-adventure').classList.contains('hidden')) renderAdventure();
   renderMarket();
   if (!$('#tab-collection').classList.contains('hidden')) renderCollection();
   if (!$('#tab-profile').classList.contains('hidden')) renderProfile();
@@ -288,6 +291,12 @@ function renderDeckSelect() {
   sel.innerHTML = decks.length ? decks.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('') : '<option value="">— brak gotowej talii —</option>';
   if (decks.some(d => d.id === prev)) sel.value = prev;
   $('#play-deck-hint').innerHTML = decks.length ? '' : 'Najpierw zbuduj talię 20 kart w zakładce <b>Kolekcja</b> (możesz kliknąć „Uzupełnij”).';
+  const as = $('#adv-deck');
+  if (as) {
+    const ap = as.value || store.get('dcg_deck');
+    as.innerHTML = sel.innerHTML;
+    if (decks.some(d => d.id === ap)) as.value = ap;
+  }
 }
 if($('#play-deck')) $('#play-deck').onchange = e => store.set('dcg_deck', e.target.value);
 
@@ -428,7 +437,7 @@ const btnDraftStart = $('#btn-draft-start');
 if (btnDraftStart) btnDraftStart.onclick = () => send({ t: 'draftStart' });
 const btnDraftRetire = $('#btn-draft-retire');
 if (btnDraftRetire) btnDraftRetire.onclick = () => {
-  const box = modal(`<h2>Porzucić obecny draft?</h2><p class="muted">Będziesz mógł zacząć nowy za opłatą.</p><div class="row center"><button class="btn danger" id="dt-yes">Porzuć</button><button class="btn ghost" id="dt-no">Anuluj</button></div>`);
+  const box = modal(`<h2>Porzucić obecny draft?</h2><p class="muted">Nowy draft możesz zacząć od razu – drafty są darmowe.</p><div class="row center"><button class="btn danger" id="dt-yes">Porzuć</button><button class="btn ghost" id="dt-no">Anuluj</button></div>`);
   box.querySelector('#dt-yes').onclick = () => { send({ t: 'draftRetire' }); closeModal(); };
   box.querySelector('#dt-no').onclick = closeModal;
 };
@@ -492,7 +501,7 @@ $('#btn-pack-close').onclick = () => $('#pack-overlay').classList.add('hidden');
 function filteredCards() {
   const q = $('#f-search').value.trim().toLowerCase(), type = $('#f-type').value, rar = $('#f-rarity').value, city = $('#f-city').value, owned = $('#f-owned').checked;
   return S.cards.filter(c => {
-    if (c.token || c.name === 'Wąż' || c.name === 'Smok') return false; 
+    if (c.token || c.hidden || c.name === 'Wąż' || c.name === 'Smok') return false;
     if (q && !(c.name.toLowerCase().includes(q) || c.desc.toLowerCase().includes(q))) return false;
     if (type && c.type !== type) return false;
     if (rar && String(c.rarity) !== rar) return false;
@@ -508,7 +517,7 @@ function renderCollection() {
   const coll = S.me.collection;
   const inDeck = S.edit ? countBy(S.edit.cards) : {};
   const list = filteredCards();
-  const validCards = S.cards.filter(c => !c.token && c.name !== 'Wąż' && c.name !== 'Smok');
+  const validCards = S.cards.filter(c => !c.token && !c.hidden && c.name !== 'Wąż' && c.name !== 'Smok');
   const ownedKinds = validCards.filter(c => coll[c.name] > 0).length;
   
   let totalOwned = 0;
@@ -793,10 +802,10 @@ async function processView(v) {
   if (first) { S.sel = null; S.mullSel = new Set(); S.mullSent = false; S.gameOverShown = false; $('#opp-left').classList.add('hidden'); closeModal(); $('.battle').classList.remove('defeat'); }
   show('game');
   const fast = S.queued > 2;
-  if (prev && !fast) await animateBefore(v, prev);
+  if (prev && !fast) { try { await animateBefore(v, prev); } catch (e) { console.error('animacja:', e); } }
   S.prevView = prev; S.view = v;
-  renderGame();
-  animateAfter(v, prev, first, fast);
+  try { renderGame(); } catch (e) { console.error('render:', e); }
+  try { animateAfter(v, prev, first, fast); } catch (e) { console.error('animacja:', e); }
   if (!fast) await sleep(120);
 }
 
@@ -970,6 +979,7 @@ function turnBanner(text, mine) {
   if (mine) SFX.play('turn');
 }
 
+function pendingTarget(v) { return v && v.pending && v.pending.mine && v.pending.type === 'target' && !v.over; }
 function isValidTarget(u, v) {
   if (!S.sel) return false;
   if (S.sel.kind === 'attacker') {
@@ -1003,6 +1013,7 @@ function unitHtml(u, mine, v) {
   if (S.sel && S.sel.uid === u.uid) cls.push('sel');
   if (u.frozen) cls.push('frozen');
   if (!mine && isValidTarget(u, v)) cls.push('target');
+  if (pendingTarget(v) && v.pending.options.includes(u.uid)) cls.push('target', 'pick-target');
   if (u.taunt) cls.push('taunt');
   const a = u.atk > u.baseAtk ? 'up' : u.atk < u.baseAtk ? 'down' : '';
   const h = u.hp > u.baseHp ? 'up' : u.hp < u.maxHp ? 'down' : '';
@@ -1023,14 +1034,17 @@ function renderGame() {
   const meTurn = v.spectator ? v.currentSeat === 0 : v.myTurn;
   $('#hero-opp').classList.toggle('active-turn', v.phase === 'play' && !meTurn && !v.over);
   $('#hero-me').classList.toggle('active-turn', v.phase === 'play' && meTurn && !v.over);
-  $('.battle').classList.toggle('spectating', !!v.spectator);$('#hero-me').classList.toggle('low', me.hp <= 6 && !v.over);
+  $('.battle').classList.toggle('spectating', !!v.spectator);
+  $('#hero-me').classList.toggle('low', me.hp <= 6 && !v.over);
   $('#hero-opp').classList.toggle('low', op.hp <= 6 && !v.over);
   $('#hero-opp').classList.toggle('target', isValidTarget('hero', v));
   $('#hero-opp').classList.toggle('immune', !!op.immune);
   $('#hero-me').classList.toggle('immune', !!me.immune);
-  const pile = (p, extra) => `<div class="deckpile ${p.deckCount === 0 ? 'empty' : ''}" title="Talia: ${p.deckCount} kart">${p.deckCount ? '<div class="cardback"></div><div class="cardback"></div><div class="cardback"></div>' : ''}<b>${p.deckCount}</b></div><div class="pile-txt">${extra}<div title="${esc(p.grave.join(', '))}">☠ ${p.grave.length}</div></div>`;
-  $('#opp-pile').innerHTML = pile(op, `<div title="Karty w ręce">✋ ${op.handCount}</div>`);
-  $('#me-pile').innerHTML = pile(me, '');
+  const pile = (p, extra, who) => `<div class="deckpile ${p.deckCount === 0 ? 'empty' : ''}" title="Talia: ${p.deckCount} kart">${p.deckCount ? '<div class="cardback"></div><div class="cardback"></div><div class="cardback"></div>' : ''}<b>${p.deckCount}</b></div><div class="pile-txt">${extra}<button type="button" class="grave-btn" data-grave="${who}" title="Pokaż cmentarz">☠ ${p.grave.length}</button></div>`;
+  $('#opp-pile').innerHTML = pile(op, `<div title="Karty w ręce">✋ ${op.handCount}</div>`, 'opp');
+  $('#me-pile').innerHTML = pile(me, '', 'me');
+  $$('[data-grave]').forEach(b => b.onclick = e => { e.stopPropagation(); showGrave(b.dataset.grave); });
+  renderHsLog(v);
   $('#mana-opp').innerHTML = manaHtml(op, false, false);
   $('#mana-me').innerHTML = manaHtml(me, true, canAct && !me.manaActionUsed);
   $('#opp-hand').innerHTML = v.spectator && op.hand
@@ -1061,13 +1075,16 @@ function renderGame() {
   $('#btn-concede').disabled = v.over;
   $('#btn-concede').classList.toggle('hidden', !!v.spectator);
 
-  $$('#mana-me [data-mana]').forEach(b => b.onclick = e => { e.stopPropagation(); act({ type: 'mana', city: b.dataset.mana }); });   $$
-('#hand-me .card').forEach(el => {
+  $$('#mana-me [data-mana]').forEach(b => b.onclick = e => { e.stopPropagation(); act({ type: 'mana', city: b.dataset.mana }); });
+  $$('#hand-me .card').forEach(el => {
     attachPreview(el, el.dataset.name);
     el.onclick = e => { e.stopPropagation(); onHandClick(el.dataset.uid); };
   });
-  $$('#board-me .unit').forEach(el => {     attachPreview(el, el.dataset.name);     el.onclick = e => { e.stopPropagation(); onMyUnitClick(el.dataset.id); };   });   $$
-('#board-opp .unit').forEach(el => {
+  $$('#board-me .unit').forEach(el => {
+    attachPreview(el, el.dataset.name);
+    el.onclick = e => { e.stopPropagation(); onMyUnitClick(el.dataset.id); };
+  });
+  $$('#board-opp .unit').forEach(el => {
     attachPreview(el, el.dataset.name);
     el.onclick = e => { e.stopPropagation(); onEnemyClick(el.dataset.id); };
   });
@@ -1080,7 +1097,7 @@ function updateHint() {
   let t = '';
   const v = S.view, pd = v && v.pending;
   if (pd && pd.mine && pd.type === 'discard') t = S.sel && S.sel.kind === 'discard' ? 'Kliknij kartę ponownie, aby ją odrzucić' : `Wybierz kartę do odrzucenia${pd.count > 1 ? ` (jeszcze ${pd.count})` : ''}`;
-  else if (pd && pd.mine && pd.type === 'resurrect') t = 'Wybierz jednostkę do wskrzeszenia';
+  else if (pd && pd.mine && pd.type === 'target') t = (pd.prompt || 'Wybierz jednostkę') + ' – kliknij podświetloną jednostkę';
   else if (pd && pd.mine && pd.type === 'choice') t = 'Wybierz jeden z efektów';
   else if (v && v.spectator) t = v.phase === 'mulligan' ? '👀 Gracze wymieniają karty startowe…' : pd ? `👀 ${pd.who || 'Gracz'} wybiera…` : '';
   else if (pd && !pd.mine) t = pd.type === 'discard' ? 'Przeciwnik wybiera kartę do odrzucenia…' : 'Przeciwnik dokonuje wyboru…';
@@ -1100,7 +1117,7 @@ function onHandClick(uid) {
     else { S.sel = { kind: 'discard', uid }; if (TOUCH) showTouchPreview(card.name); }
     renderGame(); return;
   }
-  if (v.pending) { toast(v.pending.mine ? 'Najpierw dokończ wybór.' : 'Poczekaj, przeciwnik wybiera.'); return; }
+  if (v.pending) { toast(v.pending.mine ? (v.pending.type === 'target' ? 'Najpierw wybierz jednostkę na planszy.' : 'Najpierw dokończ wybór.') : 'Poczekaj, przeciwnik wybiera.'); return; }
   if (TOUCH && !(S.sel && S.sel.uid === uid)) { S.sel = { kind: 'preview', uid }; showTouchPreview(card.name); renderGame(); return; }
   hidePreview();
   if (!v.myTurn) { toast('Poczekaj na swoją turę.'); S.sel = null; renderGame(); return; }
@@ -1142,6 +1159,7 @@ function showPay(card, cost, rest, done) {
 function onMyUnitClick(uid) {
   if (S.view && S.view.spectator) return;
   const v = S.view; if (!v || v.over) return;
+  if (pendingTarget(v)) { if (v.pending.options.includes(uid)) { hidePreview(); act({ type: 'choose', uid }); } else toast('Wybierz jedną z podświetlonych jednostek.'); return; }
   const u = v.me.board.find(x => x.uid === uid);
   if (TOUCH && !(S.sel && S.sel.uid === uid) && !(v.myTurn && u.canAttack)) { showTouchPreview(u.name); return; }
   if (!v.myTurn) return toast('Poczekaj na swoją turę.');
@@ -1152,6 +1170,7 @@ function onMyUnitClick(uid) {
 function onEnemyClick(target) {
   if (S.view && S.view.spectator) return;
   const v = S.view; if (!v) return;
+  if (pendingTarget(v)) { if (v.pending.options.includes(target)) { hidePreview(); act({ type: 'choose', uid: target }); } else toast('Wybierz jedną z podświetlonych jednostek.'); return; }
   if (S.sel && S.sel.kind === 'attacker') {
     const taunts = v.opp.board.filter(x => x.taunt);
     if (taunts.length && !taunts.some(x => x.uid === target)) { toast('Najpierw musisz zaatakować jednostkę z Prowokacją 🛡', true); return; }
@@ -1222,34 +1241,229 @@ $('#btn-mull').onclick = e => { e.stopPropagation(); act({ type: 'mulligan', uid
 function renderChoice(v) {
   const box = $('#choice');
   const pd = v.pending;
-  if (!pd || !pd.mine || (pd.type !== 'resurrect' && pd.type !== 'choice') || v.over) { box.classList.add('hidden'); return; }
+  if (!pd || !pd.mine || pd.type !== 'choice' || v.over || v.spectator) { box.classList.add('hidden'); return; }
   box.classList.remove('hidden');
-  
-  const title = $('#choice-title');
-  if (title) {
-      if (pd.type === 'resurrect') title.textContent = "Wybierz jednostkę do wskrzeszenia";
-      else title.textContent = "Wybierz jeden z efektów:";
-  }
-  
-  $('#choice-cards').innerHTML = (pd.options || []).map((n, i) => {
-    if (typeof n === "object") {
-        return `<div class="mull-card" data-index="${i}"><div class="card choice-opt" style="background:#2b1a0d;border:2px solid #f2c14e;border-radius:10px;padding:14px;color:#f3e6cf;text-align:center;display:flex;flex-direction:column;justify-content:center;"><b>${esc(n.name)}</b><br><br><span style="font-size:12px">${esc(n.desc)}</span></div></div>`;
-    }
-    return `<div class="mull-card" data-name="${esc(n)}">${cardHtml(n)}</div>`;
+  $('#choice-title').textContent = pd.source ? `${pd.source}: wybierz opcję` : 'Wybierz opcję';
+  const src = pd.source && S.byName[pd.source] ? `<div class="choice-src">${cardHtml(pd.source)}</div>` : '';
+  const opts = (pd.options || []).map((o, i) => {
+    const icon = /^[TWB]$/.test(o.key || '') ? `<span class="mana-ic ${o.key}"></span>` : '';
+    return `<button type="button" class="choice-opt" data-index="${i}">${icon}<b>${esc(o.name)}</b><span>${esc(o.desc || '')}</span></button>`;
   }).join('');
-
-  $$('#choice-cards .mull-card').forEach(el => {
-    el.onclick = e => { 
-        e.stopPropagation(); hidePreview(); 
-        if (el.dataset.name) act({ type: 'choose', name: el.dataset.name }); 
-        else act({ type: 'choiceIndex', index: parseInt(el.dataset.index) });
-        box.classList.add('hidden'); 
-    };
+  $('#choice-cards').innerHTML = `${src}<div class="choice-opts">${opts}</div>`;
+  $$('#choice-cards .choice-opt').forEach(el => {
+    el.onclick = e => { e.stopPropagation(); hidePreview(); SFX.play('click'); act({ type: 'choiceIndex', index: +el.dataset.index }); box.classList.add('hidden'); };
   });
 }
 
-// Zakończenie skryptu
+function showTouchPreview(name) {
+  const p = $('#preview');
+  p.innerHTML = cardHtml(name);
+  p.style.left = '50%'; p.style.top = '12%'; p.style.transform = 'translateX(-50%)';
+  p.classList.remove('hidden');
+  clearTimeout(showTouchPreview.t);
+  showTouchPreview.t = setTimeout(hidePreview, 2500);
+}
+
+// efekty: liczby obrażeń, zagrana karta przeciwnika
+function floatAt(el, text, cls) {
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  const f = document.createElement('div');
+  f.className = 'float ' + cls + (Math.abs(parseInt(text, 10)) >= 5 ? ' big' : ''); f.textContent = text;
+  f.style.left = (r.left + r.width / 2) + 'px'; f.style.top = (r.top + r.height / 3) + 'px';
+  document.body.appendChild(f);
+  setTimeout(() => f.remove(), 1200);
+  el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit');
+}
+function showPlayed(name, who) {
+  if (!S.byName[name]) return;
+  const p = $('#played');
+  p.innerHTML = `<div class="inner"><div class="lbl">${esc(who)} zagrywa</div>${cardHtml(name)}</div>`;
+  p.classList.remove('hidden');
+  clearTimeout(showPlayed.t);
+  showPlayed.t = setTimeout(() => p.classList.add('hidden'), 1800);
+}
+
+function onGameOver(m) {
+  $('#opp-left').classList.add('hidden');
+  const win = m.result === 'win';
+  const reason = m.reason === 'concede' ? (win ? `${m.opponent} się poddał(a).` : 'Poddałeś się.') : m.reason === 'forfeit' ? (win ? 'Walkower – przeciwnik opuścił grę.' : 'Przegrana walkowerem.') : '';
+  setTimeout(() => {
+    let reward = '';
+    if (m.bot) {
+      if (win) reward = `<p>Nagroda: <b class="gold-t">+${m.reward.gold} złota</b>${m.reward.first && m.botKind === 'adventure' ? '<br><span class="small gold-t">Pierwsze zwycięstwo nad tym bossem!</span>' : ''}</p>`;
+      else reward = `<p class="small muted">${m.botKind === 'adventure' ? 'Boss nie daje się łatwo – spróbuj innej talii.' : 'Trening czyni mistrza.'}</p>`;
+    } else if (win) {
+      reward = `<p>Nagroda: <b class="gold-t">+${m.reward.gold} złota</b></p>`;
+      if (m.reward.bonus) reward += `<p class="gold-t" style="font-size:20px"><b>BONUS +${m.reward.bonus} złota!</b><br><span class="small muted">Pokonałeś 5 różnych graczy – seria zaczyna się od nowa.</span></p>`;
+      else reward += `<p class="small muted">Seria: pokonani ${S.me ? S.me.defeated.length : '?'}/5 różnych graczy</p>`;
+    }
+    SFX.play(win ? 'win' : 'lose');
+    if (win) confetti(); else $('.battle').classList.add('defeat');
+    const again = m.bot && S.lastBot ? '<button class="btn" id="go-again">Zagraj jeszcze raz</button>' : '';
+    const box = modal(`<div class="big ${win ? 'win' : 'loss'}">${win ? 'ZWYCIĘSTWO!' : 'Porażka'}</div><p>${win ? 'Pokonałeś' : 'Przegrałeś z'} <b>${esc(m.opponent)}</b>. ${esc(reason)}</p>${reward}<div class="row center">${again}<button class="btn gold" id="go-lobby">Wróć do menu</button></div>`);
+    box.querySelector('#go-lobby').onclick = () => { closeModal(); S.view = null; show('hub'); setTab(m.bot ? 'adventure' : 'play'); };
+    const ag = box.querySelector('#go-again');
+    if (ag) ag.onclick = () => { closeModal(); S.view = null; send({ t: 'startBot', bot: S.lastBot.bot, deckId: S.lastBot.deckId }); };
+  }, 900);
+}
+
+function confetti() {
+  const colors = ['#f2c14e', '#ff6b5a', '#5fd068', '#59b7ff', '#b9a0ff', '#fff'];
+  for (let i = 0; i < 120; i++) {
+    const d = document.createElement('div');
+    d.className = 'confetti';
+    d.style.cssText = `left:${Math.random() * 100}vw;background:${colors[i % colors.length]};width:${6 + Math.random() * 6}px;height:${8 + Math.random() * 10}px`;
+    document.body.appendChild(d);
+    d.animate([{ transform: `translateY(-20px) rotate(0deg)`, opacity: 1 }, { transform: `translate(${(Math.random() - 0.5) * 200}px, 105vh) rotate(${Math.random() * 900}deg)`, opacity: 0.9 }], { duration: 2200 + Math.random() * 1800, delay: Math.random() * 600, easing: 'cubic-bezier(.3,.4,.6,1)' }).onfinish = () => d.remove();
+  }
+}
+
+function onOpponentLeft(m) {
+  const box = $('#opp-left');
+  box.classList.remove('hidden');
+  const btn = $('#btn-claim');
+  const tick = () => {
+    if (!S.view || S.view.over || box.classList.contains('hidden')) return;
+    const left = Math.max(0, Math.ceil((m.at + m.waitMs - Date.now()) / 1000));
+    $('#opp-left-text').textContent = left > 0 ? `Przeciwnik się rozłączył. Walkower możliwy za ${left}s…` : 'Przeciwnik nie wrócił.';
+    btn.disabled = left > 0;
+    if (left > 0) setTimeout(tick, 500);
+  };
+  tick();
+}
+$('#btn-claim').onclick = e => { e.stopPropagation(); send({ t: 'claimWin' }); };
+
+// ================= cmentarz =================
+function showGrave(who) {
+  const v = S.view; if (!v) return;
+  const p = who === 'opp' ? v.opp : v.me;
+  const list = p.grave.slice().reverse();
+  const cnt = countBy(list);
+  const names = [...new Set(list)].filter(n => S.byName[n]);
+  const box = modal(`<h2>☠ Cmentarz – ${esc(p.name)}</h2>
+    <p class="muted small">${list.length ? `${list.length} ${list.length === 1 ? 'karta' : list.length < 5 ? 'karty' : 'kart'} · najnowsze na początku` : 'Na razie pusto.'}</p>
+    <div class="grave-grid">${names.map(n => cardHtml(n, { count: cnt[n] > 1 ? cnt[n] : null })).join('')}</div>
+    <div class="row center"><button class="btn ${who === 'opp' ? '' : 'ghost'}" id="gv-other">${who === 'opp' ? 'Mój cmentarz' : 'Cmentarz przeciwnika'}</button><button class="btn gold" id="gv-close">Zamknij</button></div>`);
+  box.classList.add('grave-box');
+  box.querySelectorAll('.grave-grid .card').forEach(el => attachPreview(el, el.dataset.name));
+  box.querySelector('#gv-close').onclick = closeModal;
+  box.querySelector('#gv-other').onclick = () => showGrave(who === 'opp' ? 'me' : 'opp');
+}
+
+// ================= dziennik walki (jak historia w Hearthstone) =================
+const HL_ICON = { play: '', spell: '✦', attack: '⚔', trigger: '⚡', fatigue: '☠', turn: '⏳' };
+function evVisible(e) { return e.kind !== 'turn' || (e.res && e.res.length); }
+function renderHsLog(v) {
+  const el = $('#hs-log'); if (!el) return;
+  const evs = (v.events || []).filter(evVisible).slice(-12).reverse();
+  const key = evs.map(e => e.id + ':' + e.res.length).join(',') + '|' + v.mySeat;
+  if (el.dataset.key === key) return;
+  const fresh = new Set(evs.map(e => e.id).filter(id => !(el.dataset.ids || '').split(',').includes(String(id))));
+  el.dataset.key = key; el.dataset.ids = evs.map(e => e.id).join(',');
+  el.innerHTML = evs.map(e => {
+    const c = e.card && S.byName[e.card];
+    const mine = e.by === v.mySeat;
+    const died = e.res.some(r => r.died);
+    const art = c ? `style="background-image:url('img/art/${c.art}')"` : '';
+    return `<div class="hl-tile ${mine ? 'mine' : 'theirs'} k-${e.kind} ${c ? '' : 'noart'} ${fresh.has(e.id) && el.dataset.ready ? 'fresh' : ''}" data-ev="${e.id}" ${art}>${HL_ICON[e.kind] ? `<span class="hl-ic">${HL_ICON[e.kind]}</span>` : ''}${died ? '<span class="hl-skull">☠</span>' : ''}</div>`;
+  }).join('');
+  el.dataset.ready = '1';
+  el.querySelectorAll('.hl-tile').forEach(t => {
+    const ev = evs.find(e => String(e.id) === t.dataset.ev);
+    if (!TOUCH) { t.onmouseenter = () => showHsPop(ev, t); t.onmouseleave = hideHsPop; }
+    t.onclick = e => { e.stopPropagation(); if ($('#hs-pop').dataset.ev === t.dataset.ev && !$('#hs-pop').classList.contains('hidden')) hideHsPop(); else showHsPop(ev, t); };
+  });
+}
+function resBadges(r) {
+  let h = '';
+  if (r.dmg) h += `<span class="rb dmg">-${r.dmg}</span>`;
+  if (r.heal) h += `<span class="rb heal">+${r.heal}</span>`;
+  if (r.set != null && r.set !== true) h += `<span class="rb set">♥ ${r.set}</span>`;
+  if (r.buff) h += '<span class="rb buff">▲</span>';
+  if (r.frozen) h += '<span class="rb frz">❄</span>';
+  if (r.immune) h += '<span class="rb imm">🛡</span>';
+  if (r.summon) h += '<span class="rb sum">✚</span>';
+  if (r.bounce) h += '<span class="rb sum">↩</span>';
+  if (r.discard) h += '<span class="rb disc">odrzucona</span>';
+  if (r.burn) h += '<span class="rb disc">spalona</span>';
+  return h;
+}
+function heroTile(seat, r) {
+  const v = S.view, p = seat === v.mySeat ? v.me : v.opp;
+  return `<div class="hp-hero ${r && r.died ? 'dead' : ''}">${avImg(p.avatar)}<div class="nm">${esc(p.name)}</div>${r ? resBadges(r) : ''}</div>`;
+}
+function popCard(name, r, mineSeat) {
+  if (!S.byName[name]) return '';
+  return `<div class="hp-card ${r && r.died ? 'dead' : ''} ${mineSeat ? 'mine' : 'theirs'}">${cardHtml(name)}${r ? resBadges(r) : ''}${r && r.died ? '<span class="hp-skull">☠</span>' : ''}</div>`;
+}
+function showHsPop(e, tile) {
+  if (!e || !S.view) return;
+  const v = S.view, pop = $('#hs-pop');
+  const who = e.by === v.mySeat ? (v.spectator ? v.me.name : 'Ty') : v.opp.name;
+  const meSide = e.by === v.mySeat && !v.spectator;
+  const verb = (meSide ? { play: 'zagrywasz', spell: 'rzucasz', attack: 'atakujesz', trigger: '– efekt', fatigue: '– zmęczenie', turn: '– początek tury' }
+    : { play: 'zagrywa', spell: 'rzuca', attack: 'atakuje', trigger: '– efekt', fatigue: '– zmęczenie', turn: '– początek tury' })[e.kind] || '';
+  const srcRes = e.res.find(r => e.kind === 'attack' && r.name === e.card && r.seat === e.by && !r.hero) || null;
+  const rest = e.res.filter(r => r !== srcRes);
+  const targetFirst = rest.slice().sort((a, b) => (e.target && ((b.hero && e.target.hero && b.seat === e.target.seat) || b.name === e.target.name) ? 1 : 0) - (e.target && ((a.hero && e.target.hero && a.seat === e.target.seat) || a.name === e.target.name) ? 1 : 0));
+  let targets = targetFirst.map(r => r.hero ? heroTile(r.seat, r) : popCard(r.name, r, r.seat === v.mySeat)).join('');
+  if (!targets && e.target) targets = e.target.hero ? heroTile(e.target.seat, null) : popCard(e.target.name, null, e.target.seat === v.mySeat);
+  const draws = (e.draws || []).map((n, seat) => n ? `<div class="hp-note">${seat === v.mySeat ? 'Ty dobierasz' : 'Przeciwnik dobiera'} ${n} ${n === 1 ? 'kartę' : n < 5 ? 'karty' : 'kart'}</div>` : '').join('');
+  const opt = e.option ? `<div class="hp-note">Wybór: <b>${esc(e.option)}</b></div>` : '';
+  const src = e.card ? popCard(e.card, srcRes, e.by === v.mySeat) : `<div class="hp-hero">${'<div class="cardback big"></div>'}<div class="nm">${e.kind === 'fatigue' ? 'Pusta talia' : 'Tura'}</div></div>`;
+  pop.innerHTML = `<div class="hp-head ${e.by === v.mySeat ? 'mine' : 'theirs'}"><b>${esc(who)}</b> ${verb}${e.kind === 'attack' && e.auto ? ' (automatycznie)' : ''}</div>
+    <div class="hp-body">${src}${targets ? `<div class="hp-arrow">${e.kind === 'attack' ? '⚔' : '➜'}</div><div class="hp-targets">${targets}</div>` : ''}</div>${opt}${draws}`;
+  pop.dataset.ev = e.id;
+  pop.classList.remove('hidden');
+  const r = tile.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+  let x = r.right + 12; if (x + pw > innerWidth - 8) x = Math.max(8, r.left - pw - 12);
+  const y = Math.min(Math.max(8, r.top + r.height / 2 - ph / 2), innerHeight - ph - 8);
+  pop.style.left = x + 'px'; pop.style.top = y + 'px';
+}
+function hideHsPop() { $('#hs-pop').classList.add('hidden'); }
+document.addEventListener('click', () => hideHsPop());
+
+// ================= przygoda =================
+function renderAdventure() {
+  if (!S.me || !$('#adv-list')) return;
+  const adv = S.me.adventure || {};
+  const decksOk = S.me.decks.some(d => !deckProblem(d));
+  const card = b => {
+    const rec = adv[b.id] || { wins: 0, losses: 0 };
+    const isBoss = b.kind === 'adventure';
+    const reward = isBoss
+      ? (rec.wins ? `<span class="gold-t">+${b.reward.win} złota</span> za każde zwycięstwo` : `<span class="gold-t">+${b.reward.first} złota</span> za pierwsze zwycięstwo, potem +${b.reward.win}`)
+      : `<span class="gold-t">+${b.reward.win} złota</span> za każde zwycięstwo`;
+    return `<div class="boss ${isBoss ? 'is-boss' : 'is-training'} ${rec.wins ? 'beaten' : ''}">
+      <div class="boss-portrait">${avImg(b.avatar)}${rec.wins ? '<span class="boss-crown" title="Pokonany">👑</span>' : ''}</div>
+      <div class="boss-info">
+        <div class="boss-kind">${isBoss ? 'Boss ' + '★'.repeat(b.id === 'casborg' ? 1 : b.id === 'kunner' ? 2 : 3) : 'Trening'}</div>
+        <h3>${esc(b.name)}</h3>
+        <div class="boss-title muted small">${esc(b.title)}</div>
+        <p class="boss-rule">${esc(b.rule)}</p>
+        <p class="small muted">${esc(b.blurb)}</p>
+        <p class="small">${reward}</p>
+        <div class="row boss-foot"><span class="small muted">Bilans: <b>${rec.wins}</b>W / <b>${rec.losses}</b>P</span>
+        <button class="btn ${isBoss ? 'gold' : ''} small" data-bot="${b.id}" ${decksOk ? '' : 'disabled'}>Walcz</button></div>
+      </div></div>`;
+  };
+  $('#adv-list').innerHTML = S.bots.filter(b => b.kind === 'adventure').map(card).join('');
+  $('#adv-training').innerHTML = S.bots.filter(b => b.kind === 'training').map(card).join('');
+  $('#adv-hint').innerHTML = decksOk ? '' : 'Najpierw zbuduj talię 20 kart w zakładce <b>Kolekcja</b>.';
+  $$('[data-bot]').forEach(b => b.onclick = () => {
+    const deckId = $('#adv-deck').value;
+    if (!deckId) return toast('Najpierw wybierz gotową talię.', true);
+    S.lastBot = { bot: b.dataset.bot, deckId };
+    send({ t: 'startBot', bot: b.dataset.bot, deckId });
+  });
+}
+if ($('#adv-deck')) $('#adv-deck').onchange = e => store.set('dcg_deck', e.target.value);
+
+// ================= start =================
 renderLoginUsers();
 loadAvatarCards();
 updateMuteButtons();
 connect();
+// klik w tło okienka zamyka je (poza ekranem końca gry i wyzwaniem)
+$('#modal').addEventListener('click', e => { if (e.target.id === 'modal' && !$('#go-lobby') && !$('#acc-yes')) closeModal(); });

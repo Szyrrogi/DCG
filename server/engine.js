@@ -35,7 +35,10 @@ class Game {
       userId: s.userId,
       name: s.name,
       avatar: s.avatar || 1,
-      hp: START_HP,
+      hp: s.hp || START_HP,
+      isBot: !!s.isBot,
+      openingSpell: s.openingSpell || null,
+      turnsTaken: 0,
       originalDeck: s.deck.slice(),
       deck: shuffle(s.deck.filter(n => BY_NAME[n]).map(n => this.newCard(n)), rng),
       hand: [],
@@ -52,6 +55,13 @@ class Game {
       snakeSize: 0,
       reviveNextTurn: []
     }));
+    seats.forEach((s, k) => {
+      if (s.startMana) for (const c of CITIES) if (s.startMana[c]) this.players[k].mana[c].lvl = Math.min(MANA_MAX, s.startMana[c]);
+    });
+    this.events = [];
+    this.evSeq = 0;
+    this.ev = null;
+    this.uidInfo = {};
     this.current = rng() < 0.5 ? 0 : 1;
     this.turnNo = 0;
     this.over = false;
@@ -68,9 +78,79 @@ class Game {
   }
 
   newCard(name) { return { uid: 'c' + (uidCounter++), name }; }
+
+  // kopia stanu do symulacji (AI) – bez dziennika
+  clone(rng = Math.random) {
+    const g = Object.create(Game.prototype);
+    for (const k of Object.keys(this)) {
+      if (k === 'rng' || k === 'log' || k === 'events' || k === 'ev' || k === 'uidInfo' || k === 'fx' || typeof this[k] === 'function') continue;
+      const v = this[k];
+      g[k] = v && typeof v === 'object' ? structuredClone(v) : v;
+    }
+    g.rng = rng; g.log = []; g.events = []; g.ev = null; g.uidInfo = {}; g.fx = []; g.sim = true;
+    return g;
+  }
+
+  // ---- dziennik walki (jak historia w Hearthstone) ----
+  beginEvent(by, kind, card, extra = {}) {
+    if (this.sim) return null;
+    this.closeEvent();
+    const ev = { id: ++this.evSeq, turn: this.turnNo, by, kind, card, target: null, res: [], draws: [0, 0], ...extra };
+    ev.fxStart = this.fx.length;
+    this.ev = ev;
+    this.events.push(ev);
+    if (this.events.length > 40) this.events.shift();
+    return ev;
+  }
+  reopenEvent(id) {
+    const ev = id && this.events.find(e => e.id === id);
+    if (!ev || ev === this.ev) return;
+    this.closeEvent();
+    ev.fxStart = this.fx.length;
+    this.ev = ev;
+  }
+  closeEvent() {
+    const ev = this.ev; if (!ev) return;
+    this.ev = null;
+    const list = this.fx.slice(ev.fxStart);
+    const get = (id, extra) => {
+      let r = ev.res.find(x => x.key === id);
+      if (!r) {
+        let info;
+        if (/^hero[01]$/.test(id)) { const seat = +id[4]; info = { name: this.players[seat].name, seat, hero: true }; }
+        else info = this.uidInfo[id];
+        if (!info) return null;
+        r = { key: id, name: info.name, seat: info.seat, hero: !!info.hero, dmg: 0, heal: 0, ...extra };
+        ev.res.push(r);
+      }
+      return r;
+    };
+    for (const f of list) {
+      if (f.type === 'draw') { ev.draws[f.by]++; continue; }
+      if (f.type === 'discard' || f.type === 'burn') { ev.res.push({ key: 'x' + ev.res.length, name: f.name, seat: f.by, [f.type]: true, dmg: 0, heal: 0 }); continue; }
+      if (f.type === 'mana') { ev.city = f.city; continue; }
+      const id = f.id || f.uid; if (!id) continue;
+      if (f.type === 'summon' && id === ev.uid) continue;
+      const r = get(id); if (!r) continue;
+      if (f.type === 'dmg') r.dmg += f.amount || 0;
+      else if (f.type === 'heal') { if (f.amount > 0) r.heal += f.amount; else r.set = this.players[r.seat] && r.hero ? Math.max(0, this.players[r.seat].hp) : true; }
+      else if (f.type === 'die') r.died = true;
+      else if (f.type === 'buff') r.buff = true;
+      else if (f.type === 'summon') r.summon = true;
+      else if (f.type === 'freeze') r.frozen = true;
+      else if (f.type === 'immune') r.immune = true;
+      else if (f.type === 'bounce') r.bounce = true;
+    }
+    // jednostki/bohaterowie bez żadnej zmiany nie są ciekawe
+    ev.res = ev.res.filter(x => x.dmg || x.heal || x.died || x.buff || x.summon || x.frozen || x.immune || x.bounce || x.discard || x.burn || x.set != null);
+    if (ev.kind === 'turn' && !ev.res.length) { const k = this.events.indexOf(ev); if (k >= 0) this.events.splice(k, 1); }
+  }
+  publicEvents() {
+    return this.events.slice(-30).map(e => ({ id: e.id, turn: e.turn, by: e.by, kind: e.kind, card: e.card, target: e.target, option: e.option || null, city: e.city || null, auto: !!e.auto, res: e.res, draws: e.draws }));
+  }
   data(c) { return BY_NAME[c.name] || BY_NAME[c]; }
   opp(i) { return 1 - i; }
-  say(text) { this.log.push({ n: this.seq, text }); if (this.log.length > 60) this.log.shift(); }
+  say(text) { if (this.sim) return; this.log.push({ n: this.seq, text }); if (this.log.length > 60) this.log.shift(); }
   pick(arr) { return arr.length ? arr[Math.floor(this.rng() * arr.length)] : null; }
   hasTag(c, tag) { const d = this.data(c); return d.type === 'unit' && (d.tags || []).includes(tag); }
   heroId(i) { return 'hero' + i; }
@@ -94,18 +174,29 @@ class Game {
     if (this.mulliganDone[0] && this.mulliganDone[1]) {
       this.phase = 'play';
       this.startTurn(this.current);
+      this.closeEvent();
     }
   }
   autoMulligan() { for (const i of [0, 1]) if (!this.mulliganDone[i] && !this.over) { this.fx = []; this.mulligan(i, []); } this.seq++; }
 
   get pending() { return this.pendingQueue[0] || null; }
+  queue(q) { q.evId = this.ev ? this.ev.id : null; this.pendingQueue.push(q); }
   resurrectOptions(i) { return [...new Set(this.players[i].dead.filter(n => BY_NAME[n] && BY_NAME[n].type === 'unit'))]; }
   resurrect(i, name) {
     const p = this.players[i];
     p.dead.splice(p.dead.indexOf(name), 1);
     const g = p.grave.lastIndexOf(name); if (g >= 0) p.grave.splice(g, 1);
-    this.say(`Wskrzeszono ${name}!`);
+    this.say(`${p.name} wskrzesza ${name}!`);
     this.summon(i, this.newCard(name), { battlecry: true, fromPlay: true, fromGrave: true });
+  }
+  resurrectRandom(i) {
+    const p = this.players[i];
+    const opts = this.resurrectOptions(i);
+    if (!opts.length) { this.say('Brak poległych jednostek do wskrzeszenia.'); return; }
+    if (p.board.length >= BOARD_LIMIT) { this.say('Plansza pełna – nikt nie wstaje z grobu.'); return; }
+    // losujemy spośród wszystkich poległych (więcej kopii = większa szansa), Olaf zawsze pierwszy
+    const pool = p.dead.filter(n => BY_NAME[n] && BY_NAME[n].type === 'unit');
+    this.resurrect(i, opts.includes('Olaf') ? 'Olaf' : this.pick(pool));
   }
 
   resolvePending() {
@@ -115,92 +206,127 @@ class Game {
         if (q.count <= 0 || p.hand.length === 0) { this.pendingQueue.shift(); continue; }
         if (p.hand.length <= q.count) {
           this.pendingQueue.shift();
+          this.reopenEvent(q.evId);
           for (const c of p.hand.slice()) this.discard(q.player, c);
           this.sweep();
           continue;
         }
         if (q.player !== this.current) {
           q.count--; if (q.count <= 0) this.pendingQueue.shift();
+          this.reopenEvent(q.evId);
           this.discard(q.player, this.pick(p.hand)); this.sweep();
           continue;
         }
         return;
       }
-      if (q.type === 'resurrect') {
-        const opts = this.resurrectOptions(q.player);
-        if (!opts.length) { this.say('Brak poległych jednostek.'); this.pendingQueue.shift(); continue; }
-        if (p.board.length >= BOARD_LIMIT) { this.say('Plansza pełna.'); this.pendingQueue.shift(); continue; }
-        if (opts.includes('Olaf')) { this.pendingQueue.shift(); this.resurrect(q.player, 'Olaf'); continue; }
-        if (q.player !== this.current) {
-            this.pendingQueue.shift(); this.resurrect(q.player, this.pick(opts));
-            continue;
-        }
+      if (q.type === 'target') {
+        q.options = q.options.filter(uid => this.findUnit(uid));
+        if (!q.options.length) { this.pendingQueue.shift(); this.say('Brak celu.'); continue; }
+        if (q.player !== this.current) { this.choose(q.player, { uid: this.pick(q.options) }); continue; }
         return;
       }
       if (q.type === 'choice') {
-        if (q.player !== this.current) {
-            this.pendingQueue.shift();
-            this.choose(q.player, { index: Math.floor(this.rng() * q.options.length) }, true);
-            continue;
-        }
+        if (!q.options.length) { this.pendingQueue.shift(); continue; }
+        if (q.options.length === 1 && q.autoSingle) { this.choose(q.player, { index: 0 }); continue; }
+        if (q.player !== this.current) { this.choose(q.player, { index: Math.floor(this.rng() * q.options.length) }); continue; }
         return;
       }
       this.pendingQueue.shift();
     }
   }
-  
-  choose(i, a, auto = false) {
+
+  findUnit(uid) {
+    for (const pi of [0, 1]) { const u = this.players[pi].board.find(x => x.uid === uid); if (u) return { u, pi }; }
+    return null;
+  }
+
+  pushTarget(i, ctx, uids, prompt, front = true) {
+    const q = { player: i, type: 'target', options: uids, prompt, context: ctx, evId: this.ev ? this.ev.id : null };
+    if (front) this.pendingQueue.unshift(q); else this.pendingQueue.push(q);
+  }
+
+  choose(i, a) {
     const q = this.pending;
     if (!q || q.player !== i) throw new GameError('Nie ma nic do wybrania.');
-    const p = this.players[i];
-    
+    const p = this.players[i], o = this.opp(i);
+
     if (q.type === 'discard') {
       const c = p.hand.find(x => x.uid === a.uid);
       if (!c) throw new GameError('Wybierz kartę z ręki.');
       q.count--; if (q.count <= 0) this.pendingQueue.shift();
+      this.reopenEvent(q.evId);
       this.discard(i, c);
-    } else if (q.type === 'resurrect') {
-      if (!this.resurrectOptions(i).includes(a.name)) throw new GameError('Wybierz z listy.');
+      return;
+    }
+
+    if (q.type === 'target') {
+      if (!q.options.includes(a.uid)) throw new GameError('Wybierz jedną z podświetlonych jednostek.');
+      const f = this.findUnit(a.uid);
       this.pendingQueue.shift();
-      this.resurrect(i, a.name);
-    } else if (q.type === 'choice') {
-      if (a.index == null || a.index < 0 || a.index >= q.options.length) throw new GameError('Zły wybór.');
-      if (!auto) this.pendingQueue.shift();
-      
-      if (q.context.action === 'olaf') {
-        const u = p.board.find(x => x.uid === q.context.uid);
-        if (u) {
-            if (a.index === 0) u.olafMode = 1;
-            else u.olafMode = 2;
+      this.reopenEvent(q.evId);
+      if (!f) return;
+      const { u, pi } = f;
+      if (this.ev) this.ev.target = this.ev.target || { name: u.name, uid: u.uid, seat: pi };
+      switch (q.context.action) {
+        case 'pedalBuff':
+          u.atk += 3; u.hp += 3; u.maxHp += 3; this.fx.push({ type: 'buff', id: u.uid });
+          this.say(`${u.name} otrzymuje +3/+3.`); break;
+        case 'pedalKill':
+          this.destroyUnit(pi, u); this.say(`${u.name} zostaje zniszczony.`); break;
+        case 'astarion': {
+          const me = p.board.find(x => x.uid === q.context.uid);
+          this.destroyUnit(pi, u); this.say(`${u.name} zostaje poświęcony.`);
+          if (me) { me.atk += 2; me.hp += 2; me.maxHp += 2; this.fx.push({ type: 'buff', id: me.uid }); }
+          break;
         }
-      } else if (q.context.action === 'sedoro') {
-        if (a.index === 0) {
+      }
+      return;
+    }
+
+    if (q.type === 'choice') {
+      if (a.index == null || a.index < 0 || a.index >= q.options.length) throw new GameError('Zły wybór.');
+      this.pendingQueue.shift();
+      this.reopenEvent(q.evId);
+      const opt = q.options[a.index];
+      if (this.ev) this.ev.option = opt.name;
+      switch (q.context.action) {
+        case 'olaf': {
+          const u = p.board.find(x => x.uid === q.context.uid);
+          if (u) u.olafMode = opt.key === 'double' ? 1 : 2;
+          break;
+        }
+        case 'sedoro':
+          if (opt.key === 'snake') {
             p.snakeSize = (p.snakeSize || 0) + 1;
             const sn = this.summon(i, this.newCard('Wąż'), { battlecry: false });
             if (sn) { sn.atk = p.snakeSize; sn.hp = p.snakeSize; sn.maxHp = p.snakeSize; }
-        } else {
+          } else {
             p.deck.push(this.newCard('Sedoro OST'), this.newCard('Sedoro OST'));
             shuffle(p.deck, this.rng);
             this.say(`Wtasowano 2 Sedoro OST.`);
-        }
-      } else if (q.context.action === 'ostatnipedal') {
-        if (a.index === 0) {
-            for (const u of p.board) { u.atk+=3; u.hp+=3; u.maxHp+=3; this.fx.push({type:'buff', id:u.uid}); }
-        } else {
-            const tgt = this.pick(this.players[this.opp(i)].board.filter(u => this.hasTag(u, 'Lewc')));
-            if (tgt) this.destroyUnit(this.opp(i), tgt);
-        }
-      } else if (q.context.action === 'astarion') {
-        if (a.index === 0) {
-            const sac = this.pick(p.board.filter(x => x.uid !== q.context.uid));
-            if (sac) {
-                this.destroyUnit(i, sac);
-                const u = p.board.find(x => x.uid === q.context.uid);
-                if (u) { u.atk+=2; u.hp+=2; u.maxHp+=2; this.fx.push({type:'buff', id:u.uid}); }
-            }
-        }
+          }
+          break;
+        case 'pedal':
+          if (opt.key === 'buff') this.pushTarget(i, { action: 'pedalBuff' }, p.board.map(u => u.uid), 'Wybierz swojego stronnika: +3/+3');
+          else this.pushTarget(i, { action: 'pedalKill' }, this.players[o].board.filter(u => this.hasTag(u, 'Lewc')).map(u => u.uid), 'Wybierz wrogiego Lewca do zniszczenia');
+          break;
+        case 'astarion':
+          if (opt.key === 'sac') this.pushTarget(i, { action: 'astarion', uid: q.context.uid }, p.board.filter(x => x.uid !== q.context.uid).map(u => u.uid), 'Wybierz stronnika do poświęcenia');
+          break;
+        case 'manaCity':
+          if (this.addManaProgress(p, opt.key)) this.say(`${p.name} rozbudowuje ${CITY_NAMES[opt.key]}.`);
+          this.fx.push({ type: 'mana', by: i, city: opt.key });
+          break;
       }
     }
+  }
+
+  // karty z wyborem, które bez celu nie miałyby żadnego efektu
+  castable(i, card) {
+    const d = this.data(card), me = this.players[i], them = this.players[this.opp(i)];
+    if (d.effect === 'LastPedalChoice') return me.board.length > 0 || them.board.some(u => this.hasTag(u, 'Lewc'));
+    if (d.type === 'spell' && (d.effect === 'DestroyTargetMinion' || d.effect === 'DestroyAndOpponentDraws')) return them.board.length > 0;
+    return true;
   }
 
   available(p, city) { const m = p.mana[city]; return m.lvl - m.used; }
@@ -262,7 +388,11 @@ class Game {
     for (let k = 0; k < count; k++) {
       if (p.deck.length === 0) {
         p.fatigue++;
+        const own = !this.ev;
+        if (own) this.beginEvent(i, 'fatigue', null);
+        if (this.ev && this.ev.kind === 'turn') this.ev.kind = 'fatigue';
         this.damageHero(i, p.fatigue, null, 'zmęczenie');
+        if (own) this.closeEvent();
         this.say(`${p.name} nie ma kart w talii – zmęczenie zadaje ${p.fatigue} obrażeń.`);
         continue;
       }
@@ -306,6 +436,7 @@ class Game {
     }
 
     p.board.push(unit);
+    this.uidInfo[unit.uid] = { name: unit.name, seat: i };
     this.fx.push({ type: 'summon', uid: unit.uid });
     if (!fromPlay) this.say(`${card.name} pojawia się na planszy ${p.name}.`);
     
@@ -482,7 +613,7 @@ class Game {
         break;
       }
       case 'SetHealthTo30': me.hp = 30; this.fx.push({ type: 'heal', id: this.heroId(i), amount: 0 }); this.say(`Zdrowie ustawione na 30.`); break;
-      case 'ResurrectFriendlyUnit': this.pendingQueue.push({ player: i, type: 'resurrect' }); break;
+      case 'ResurrectFriendlyUnit': this.resurrectRandom(i); break;
       case 'DamageAllExceptProgrammers': {
         if (!progInHand()) { this.say('Brak informatyka w ręce.'); break; }
         for (const pi of [0, 1]) for (const u of this.players[pi].board) if (!this.hasTag(u, 'Informatyk')) this.damageUnit(u, value);
@@ -505,7 +636,7 @@ class Game {
       case 'ReturnToHandRandom': if (src && this.rng() < 0.5 && this.returnToHand(i, src)) this.say(`${src.name} wraca do ręki!`); break;
       case 'ChargeDiscardTwo':
         if (src) src.attacksLeft = this.attacksPerTurn(src);
-        this.pendingQueue.push({ player: i, type: 'discard', count: 2 });
+        this.queue({ player: i, type: 'discard', count: 2 });
         break;
       case 'BuffAndChargeIfProgrammerInHand': 
         if (src && progInHand()) { src.atk += value; src.hp += value; src.maxHp += value; src.attacksLeft = this.attacksPerTurn(src); this.fx.push({type:'buff', id:src.uid}); } break;
@@ -571,23 +702,25 @@ class Game {
       case 'DamageAndDiscard': {
         const t = target && target !== 'hero' ? them.board.find(u => u.uid === target) : null;
         if (t) this.damageUnit(t, value); else this.damageHero(o, value);
-        this.pendingQueue.push({ player: i, type: 'discard', count: 1 });
+        this.queue({ player: i, type: 'discard', count: 1 });
         break;
       }
-      case 'HalfBydgoszczMana': {
-        const m = me.mana.B;
-        if (m.lvl < MANA_MAX) {
-            m.prog += MANA_COSTS[m.lvl] / 2;
-            if (m.prog >= MANA_COSTS[m.lvl]) { m.lvl++; m.prog = 0; }
-        }
+      case 'HalfBydgoszczMana': case 'ManaCrystal': {
+        const opts = CITIES.filter(c => me.mana[c].lvl < MANA_MAX).map(c => {
+          const m = me.mana[c], need = MANA_COSTS[m.lvl];
+          return { key: c, name: CITY_NAMES[c], desc: m.prog + 1 >= need ? `Nowa kula: ${m.lvl} → ${m.lvl + 1}` : `Budowa kuli: ${m.prog + 1}/${need}` };
+        });
+        if (!opts.length) { this.say('Wszystkie miasta są już rozbudowane.'); break; }
+        this.queue({ player: i, type: 'choice', options: opts, context: { action: 'manaCity' }, autoSingle: true });
         break;
       }
-      case 'DiscardCardFromHand': this.pendingQueue.push({ player: i, type: 'discard', count: 1 }); break;
+      case 'DiscardCardFromHand': this.queue({ player: i, type: 'discard', count: 1 }); break;
       case 'ReturnFriendlyToHand': {
         const t = this.pick(me.board.filter(u => u !== src));
         if (t && this.returnToHand(i, t)) this.say(`${t.name} wraca do ręki.`);
         break;
       }
+      case 'SetEnemyHealthTo': them.hp = value; this.fx.push({ type: 'heal', id: this.heroId(o), amount: 0 }); this.say(`Zdrowie ${them.name} ustawione na ${value}!`); break;
       case 'SetEnemyHealthToYours': them.hp = me.hp; this.fx.push({ type: 'heal', id: this.heroId(o), amount: 0 }); break;
       case 'DamageSelfAndDraw': this.damageHero(i, value); this.draw(i); break;
       case 'DamageBothHeroes': this.damageHero(i, value); this.damageHero(o, value); break;
@@ -604,7 +737,7 @@ class Game {
         this.draw(o, 2);
         break;
       }
-      case 'DiscardAndDraw2': this.pendingQueue.push({ player: i, type: 'discard', count: 1 }); this.draw(i, 2); break;
+      case 'DiscardAndDraw2': this.queue({ player: i, type: 'discard', count: 1 }); this.draw(i, 2); break;
       case 'BuffGraveyard': me.graveBuff = (me.graveBuff || 0) + 2; this.say(`Cmentarz wzmocniony +2/+2.`); break;
       case 'SummonTwoCopies': 
         if (src) { this.summon(i, this.newCard(src.name), { battlecry: false }); this.summon(i, this.newCard(src.name), { battlecry: false }); } break;
@@ -645,15 +778,21 @@ class Game {
       case 'OlafChoice': {
         const aga = me.deck.find(x => x.name === 'Agnieszka');
         if (aga) { me.deck.splice(me.deck.indexOf(aga), 1); this.toHand(i, aga); this.say(`${me.name} dobiera Agnieszkę.`); }
-        if(src) this.pendingQueue.push({ player: i, type: 'choice', options: [{ name: "Podwójny atak", desc: "Podwójny atak z Agą" }, { name: "Moc Pieśni", desc: "+2 Mocy Pieśni z Agą" }], context: { uid: src.uid, action: 'olaf' } }); 
+        if (src) this.queue({ player: i, type: 'choice', options: [{ key: 'double', name: 'Podwójny atak', desc: 'Dopóki Agnieszka jest na planszy, Olaf ma podwójny atak' }, { key: 'sp', name: 'Moc pieśni', desc: 'Dopóki Agnieszka jest na planszy: +2 Mocy pieśni' }], context: { uid: src.uid, action: 'olaf' } });
         break;
       }
       case 'SedoroChoice':
-        this.pendingQueue.push({ player: i, type: 'choice', options: [{ name: "Wąż", desc: "Przywołaj rosnącego węża" }, { name: "OST", desc: "Wtasuj 2 'Sedoro OST'" }], context: { action: 'sedoro' } }); break;
+        this.queue({ player: i, type: 'choice', options: [{ key: 'snake', name: 'Wąż', desc: 'Przywołaj węża (każdy kolejny jest większy)' }, { key: 'ost', name: 'OST', desc: 'Wtasuj 2 „Sedoro OST” do talii' }], context: { action: 'sedoro' } }); break;
       case 'LastPedalChoice':
-        this.pendingQueue.push({ player: i, type: 'choice', options: [{ name: "Wzmocnij", desc: "Daj stronnikom +3/+3" }, { name: "Zniszcz", desc: "Zniszcz losowego Lewca" }], context: { action: 'ostatnipedal' } }); break;
+      {
+        const opts = [];
+        if (me.board.length) opts.push({ key: 'buff', name: 'Wzmocnij', desc: 'Wybrany Twój stronnik dostaje +3/+3' });
+        if (them.board.some(u => this.hasTag(u, 'Lewc'))) opts.push({ key: 'kill', name: 'Zniszcz Lewca', desc: 'Zniszcz wybranego wrogiego Lewca' });
+        if (!opts.length) { this.say('Ostatni pedał nie ma celu.'); break; }
+        this.queue({ player: i, type: 'choice', options: opts, context: { action: 'pedal' } }); break;
+      }
       case 'AstarionChoice':
-        if(src) this.pendingQueue.push({ player: i, type: 'choice', options: [{ name: "Poświęć", desc: "Zyskaj +2/+2 za inną jedn." }, { name: "Pomiń", desc: "Nic" }], context: { uid: src.uid, action: 'astarion' } }); break;
+        if (src && me.board.some(u => u !== src)) this.queue({ player: i, type: 'choice', options: [{ key: 'sac', name: 'Poświęć', desc: 'Zniszcz wybranego swojego stronnika, Astarion dostaje +2/+2' }, { key: 'skip', name: 'Pomiń', desc: 'Nic nie rób' }], context: { uid: src.uid, action: 'astarion' } }); break;
       case 'SummonScalingSnake':
         me.snakeSize = (me.snakeSize || 0) + 1;
         const snake = this.summon(i, this.newCard('Wąż'), { battlecry: false });
@@ -672,9 +811,12 @@ class Game {
     p.manaActionUsed = false;
     
     if (p.juliiTurns > 0) p.juliiTurns--;
+    p.turnsTaken = (p.turnsTaken || 0) + 1;
+    this.beginEvent(i, 'turn', null);
     
     if (p.reviveNextTurn && p.reviveNextTurn.length) {
         for (const name of p.reviveNextTurn) {
+            this.say(`${name} wraca na planszę!`);
             const u = this.summon(i, this.newCard(name), { battlecry: false });
             if (u) u.revived = true;
         }
@@ -682,11 +824,17 @@ class Game {
     }
 
     this.draw(i);
+    this.closeEvent();
     for (const u of p.board.slice()) {
+      if (!p.board.includes(u)) continue;
       u.attacksLeft = u.frozen ? 0 : this.attacksPerTurn(u);
       if (this.data(u).passive === 'GainStatStartTurn') { u.atk++; u.hp++; u.maxHp++; this.fx.push({ type: 'buff', id: u.uid }); }
       if (this.data(u).passive === 'DestroyAllStartTurn') {
+          this.beginEvent(i, 'trigger', u.name, { uid: u.uid });
           for (const pi of [0, 1]) for (const target of this.players[pi].board.slice()) this.destroyUnit(pi, target);
+          this.say(`${u.name} niszczy wszystkich stronników!`);
+          this.closeEvent();
+          continue;
       }
       
       const d = this.data(u);
@@ -694,6 +842,14 @@ class Game {
         u.turnsAlive++;
         if (u.turnsAlive >= d.turnsUntilDeath) { this.destroyUnit(i, u, { vanish: true }); }
       }
+    }
+    if (p.openingSpell && p.turnsTaken === 1 && !this.over) {
+      const sp = BY_NAME[p.openingSpell];
+      this.beginEvent(i, 'spell', sp.name);
+      this.fx.push({ type: 'play', name: sp.name, by: i });
+      this.say(`${p.name} rzuca ${sp.name}!`);
+      this.runEffect(sp.effect, sp.value, i, false, null);
+      this.closeEvent();
     }
     this.checkEnd();
   }
@@ -706,9 +862,13 @@ class Game {
       if (this.data(u).passive === 'AutoAttackEndTurn') {
           const targets = [...this.players[this.opp(i)].board, 'hero'];
           const t = this.pick(targets);
+          this.beginEvent(i, 'attack', u.name, { uid: u.uid, auto: true });
+          if (this.ev) this.ev.target = t === 'hero' ? { name: this.players[this.opp(i)].name, hero: true, seat: this.opp(i) } : { name: t.name, uid: t.uid, seat: this.opp(i) };
           const atk = this.attackOf(i, u);
+          this.say(`${u.name} na koniec tury atakuje ${t === 'hero' ? this.players[this.opp(i)].name : t.name}.`);
           if (t === 'hero') this.damageHero(this.opp(i), atk, u);
           else this.damageUnit(t, atk, u);
+          this.closeEvent();
       }
     }
   }
@@ -733,20 +893,21 @@ class Game {
   action(i, a) {
     if (this.over) throw new GameError('Gra się skończyła.');
     this.fx = [];
+    this.ev = null;
     if (a.type === 'concede') { this.say(`${this.players[i].name} poddaje się.`); this.finish(this.opp(i), 'concede'); this.seq++; return; }
     if (a.type === 'mulligan') { this.mulligan(i, a.uids); this.seq++; return; }
     if (this.phase === 'mulligan') throw new GameError('Najpierw wymiana kart startowych.');
     if (i !== this.current) throw new GameError('To nie Twoja tura.');
     const p = this.players[i];
-    if (this.pending && a.type !== 'choose' && a.type !== 'choiceIndex') throw new GameError('Najpierw dokonaj wyboru.');
+    if (this.pending && a.type !== 'choose' && a.type !== 'choiceIndex') throw new GameError(this.pending.type === 'discard' ? 'Najpierw wybierz kartę do odrzucenia.' : 'Najpierw dokonaj wyboru.');
     
     switch (a.type) {
       case 'choose': this.choose(i, a); break;
       case 'choiceIndex': this.choose(i, a); break;
       case 'mana': {
         if (!CITIES.includes(a.city)) throw new GameError('Złe miasto.');
-        if (p.manaActionUsed) throw new GameError('Już rozbudowałeś miasto.');
-        if (!this.addManaProgress(p, a.city)) throw new GameError('To miasto jest już rozbudowane.');
+        if (p.manaActionUsed) throw new GameError('Już rozbudowałeś miasto w tej turze.');
+        if (!this.addManaProgress(p, a.city)) throw new GameError('To miasto jest już w pełni rozbudowane.');
         p.manaActionUsed = true;
         break;
       }
@@ -755,7 +916,7 @@ class Game {
         if (a.uid && a.uid.startsWith('g_')) {
             const idx = parseInt(a.uid.substring(2));
             const name = p.grave[idx];
-            if (!name || BY_NAME[name].passive !== 'PlayableFromGraveyard') throw new GameError('Zła karta.');
+            if (!name || !BY_NAME[name] || BY_NAME[name].passive !== 'PlayableFromGraveyard') throw new GameError('Zła karta.');
             card = { uid: 'c' + (uidCounter++), name };
             cost = { T:0, W:0, B:0, D:2 };
             fromGrave = true;
@@ -767,12 +928,14 @@ class Game {
         
         const d = this.data(card);
         if (!this.canPay(p, cost)) throw new GameError('Nie stać Cię na tę kartę.');
-        if (d.type === 'unit' && p.board.length >= BOARD_LIMIT) throw new GameError('Plansza pełna.');
+        if (d.type === 'unit' && p.board.length >= BOARD_LIMIT) throw new GameError('Plansza jest pełna.');
+        if (!this.castable(i, card)) throw new GameError('Ta karta nie ma teraz żadnego celu.');
         this.pay(p, cost, a.pay);
         
         if (fromGrave) {
-            const idx = p.grave.lastIndexOf(card.name);
-            if (idx >= 0) p.grave.splice(idx, 1);
+            const idx = parseInt(a.uid.substring(2));
+            p.grave.splice(idx, 1);
+            const di = p.dead.lastIndexOf(card.name); if (di >= 0) p.dead.splice(di, 1);
         } else {
             p.hand.splice(p.hand.indexOf(card), 1);
         }
@@ -784,6 +947,16 @@ class Game {
         }
         
         this.fx.push({ type: 'play', name: card.name, by: i });
+        this.beginEvent(i, d.type === 'unit' ? 'play' : 'spell', card.name, { uid: card.uid, fromGrave });
+        {
+          const tgt = a.target === 'hero' ? this.players[this.opp(i)].name : a.target ? (this.players[this.opp(i)].board.find(x => x.uid === a.target) || {}).name : null;
+          this.say(`${p.name} ${d.type === 'unit' ? 'zagrywa' : 'rzuca'} ${card.name}${fromGrave ? ' z cmentarza' : ''}${tgt && (d.target || d.type === 'spell') ? ` → ${tgt}` : ''}.`);
+        }
+        if (a.target) {
+          const tu = a.target === 'hero' ? null : this.players[this.opp(i)].board.find(x => x.uid === a.target);
+          if (!this.ev) {} else if (a.target === 'hero') this.ev.target = { name: this.players[this.opp(i)].name, hero: true, seat: this.opp(i) };
+          else if (tu) this.ev.target = { name: tu.name, uid: tu.uid, seat: this.opp(i) };
+        }
         if (d.type === 'unit') {
           this.summon(i, card, { fromPlay: true, fromGrave });
           if (d.endsTurn) this.autoEndTurn = true;
@@ -798,16 +971,23 @@ class Game {
         const u = p.board.find(x => x.uid === a.uid);
         if (!u) throw new GameError('Nie ma takiej jednostki.');
         if (this.data(u).passive === 'AutoAttackEndTurn') throw new GameError('Ta jednostka nie może atakować ręcznie.');
-        if (u.attacksLeft <= 0) throw new GameError(u.frozen ? 'Zamrożona.' : 'Nie może atakować.');
+        if (u.attacksLeft <= 0) throw new GameError(u.frozen ? 'Ta jednostka jest zamrożona.' : 'Ta jednostka nie może teraz atakować.');
         const o = this.opp(i);
         const taunts = this.players[o].board.filter(x => this.data(x).taunt || x.taunt);
-        if (taunts.length && !taunts.some(x => x.uid === a.target)) throw new GameError('Najpierw Prowokacja.');
+        if (taunts.length && !taunts.some(x => x.uid === a.target)) throw new GameError('Najpierw musisz zaatakować jednostkę z Prowokacją.');
         const atk = this.attackOf(i, u);
+        this.beginEvent(i, 'attack', u.name, { uid: u.uid });
+        {
+          const tn = a.target === 'hero' ? this.players[o].name : (this.players[o].board.find(x => x.uid === a.target) || {}).name;
+          if (tn) this.say(`${u.name} atakuje ${tn} (${atk} obr.).`);
+        }
         if (a.target === 'hero') {
+          if (this.ev) this.ev.target = { name: this.players[o].name, hero: true, seat: o };
           this.damageHero(o, atk, u);
         } else {
           const t = this.players[o].board.find(x => x.uid === a.target);
           if (!t) throw new GameError('Zły cel.');
+          if (this.ev) this.ev.target = { name: t.name, uid: t.uid, seat: o };
           const back = this.attackOf(o, t);
           this.damageUnit(t, atk, u);
           this.damageUnit(u, back, t);
@@ -820,6 +1000,7 @@ class Game {
         break;
       }
       case 'end': {
+        this.say(`${this.players[i].name} kończy turę.`);
         this.endTurnPassives(i);
         this.sweep();
         if (!this.checkEnd()) this.startTurn(this.opp(i));
@@ -833,11 +1014,19 @@ class Game {
     this.checkEnd();
     if (this.autoEndTurn && !this.pending && !this.over && this.current === i) {
       this.autoEndTurn = false;
+      this.say(`${this.players[i].name} – tura kończy się automatycznie.`);
       this.endTurnPassives(i);
       this.sweep();
       if (!this.checkEnd()) this.startTurn(this.opp(i));
     }
+    this.closeEvent();
     this.seq++;
+  }
+
+  pendingSource() {
+    const q = this.pending; if (!q || !q.evId) return null;
+    const ev = this.events.find(e => e.id === q.evId);
+    return ev ? ev.card : null;
   }
 
   view(i) {
@@ -860,7 +1049,7 @@ class Game {
       };
     };
     
-    const gravePlayables = me.grave.filter(n => BY_NAME[n] && BY_NAME[n].passive === 'PlayableFromGraveyard').map((n, idx) => ({ 
+    const gravePlayables = me.grave.map((n, idx) => ({ n, idx })).filter(x => BY_NAME[x.n] && BY_NAME[x.n].passive === 'PlayableFromGraveyard').map(({ n, idx }) => ({
         uid: 'g_' + idx, name: n, cost: { T:0, W:0, B:0, D:2 }, playable: this.phase === 'play' && !this.pending && this.current === i && !this.over && this.canPay(me, { T:0, W:0, B:0, D:2 }) && me.board.length < BOARD_LIMIT 
     }));
 
@@ -870,12 +1059,13 @@ class Game {
       phase: this.phase, mulliganEndsAt: this.mulliganEndsAt || null, spectator: false,
       mulligan: this.phase === 'mulligan' ? { me: this.mulliganDone[i], opp: this.mulliganDone[this.opp(i)] } : null,
       pending: this.pending ? (this.pending.player === i
-        ? { mine: true, type: this.pending.type, count: this.pending.count || 0, options: this.pending.options || null }
+        ? { mine: true, type: this.pending.type, count: this.pending.count || 0, options: this.pending.options || null, prompt: this.pending.prompt || null, source: this.pendingSource() }
         : { mine: false, type: this.pending.type }) : null,
       winner: this.over ? (this.winner === i ? 'me' : 'opp') : null, endReason: this.endReason,
-      me: { ...pub(i), hand: [...me.hand.map(c => ({ uid: c.uid, name: c.name, cost: this.effectiveCost(i, c), playable: this.phase === 'play' && !this.pending && this.current === i && !this.over && this.canPay(me, this.effectiveCost(i, c)) && !(BY_NAME[c.name].type === 'unit' && me.board.length >= BOARD_LIMIT) })), ...gravePlayables] },
+      me: { ...pub(i), hand: [...me.hand.map(c => ({ uid: c.uid, name: c.name, cost: this.effectiveCost(i, c), playable: this.phase === 'play' && !this.pending && this.current === i && !this.over && this.canPay(me, this.effectiveCost(i, c)) && !(BY_NAME[c.name].type === 'unit' && me.board.length >= BOARD_LIMIT) && this.castable(i, c) })), ...gravePlayables] },
       opp: pub(this.opp(i)),
       log: this.log.slice(-30).map(l => l.text),
+      events: this.publicEvents(),
       fx: this.fx, turnStartedAt: this.turnStartedAt,
     };
   }
@@ -892,4 +1082,4 @@ Game.prototype.spectatorView = function () {
   return v;
 };
 
-module.exports = { Game, GameError, CARDS, BY_NAME, START_HP, HAND_LIMIT, BOARD_LIMIT };
+module.exports = { Game, GameError, CARDS, BY_NAME, START_HP, HAND_LIMIT, BOARD_LIMIT, CITIES, MANA_COSTS, MANA_MAX };

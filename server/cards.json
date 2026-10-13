@@ -505,7 +505,7 @@
   },
   {
     "name": "Mordekaiser",
-    "desc": "Okrzyk Bojowy: Dostajesz połowę kuli Bydgoszczy",
+    "desc": "Okrzyk Bojowy: Rozbuduj wybrane miasto (tak jak przyciskiem +). Nie zużywa Twojej rozbudowy w tej turze",
     "rarity": 1,
     "cost": {
       "T": 1,
@@ -514,7 +514,7 @@
       "D": 2
     },
     "type": "unit",
-    "effect": "HalfBydgoszczMana",
+    "effect": "ManaCrystal",
     "value": 1,
     "art": "Mordekaiser.webp",
     "atk": 3,
@@ -1395,7 +1395,7 @@
   },
   {
     "name": "Ostatni pedał",
-    "desc": "Wybierz opcję: Daj swoim stronnikom +3/+3 LUB zniszcz wybranego Lewca",
+    "desc": "Wybierz opcję: Daj wybranemu swojemu stronnikowi +3/+3 LUB zniszcz wybranego Lewca",
     "rarity": 1,
     "cost": {
       "T": 1,
@@ -1512,5 +1512,29 @@
     "charge": false,
     "turnsUntilDeath": -1,
     "token": true
+  },
+  {
+    "name": "Wyrok Kunnera",
+    "desc": "Ustaw zdrowie wrogiego bohatera na 6",
+    "rarity": 3,
+    "cost": {
+      "T": 0,
+      "W": 0,
+      "B": 0,
+      "D": 0
+    },
+    "type": "spell",
+    "effect": "SetEnemyHealthTo",
+    "value": 6,
+    "art": "Wyrok_Kunnera.svg",
+    "atk": 0,
+    "hp": 0,
+    "tags": [],
+    "spellPower": 0,
+    "passive": "",
+    "charge": false,
+    "turnsUntilDeath": -1,
+    "token": true,
+    "hidden": true
   }
 ]

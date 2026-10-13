@@ -44,6 +44,7 @@
     <div class="logo small">DCG</div>
     <nav class="tabs">
       <button data-tab="play" class="tab active">Graj</button>
+      <button data-tab="adventure" class="tab">Przygoda</button>
       <button data-tab="draft" class="tab">Draft</button>
       <button data-tab="packs" class="tab">Paczki</button>
       <button data-tab="collection" class="tab">Kolekcja</button>
@@ -85,6 +86,21 @@
     </div>
   </div>
 
+  <!-- PRZYGODA -->
+  <div id="tab-adventure" class="tab-body hidden">
+    <div class="panel adv-head">
+      <div>
+        <h2>Przygoda</h2>
+        <p class="muted small">Trzech bossów z własnymi zasadami. Za pierwsze pokonanie bossa dostajesz <b class="gold-t">30 złota</b>, za każde kolejne <b class="gold-t">10 złota</b>. Bot treningowy płaci <b class="gold-t">5 złota</b> za wygraną.</p>
+      </div>
+      <label class="row adv-deck-pick">Twoja talia:<select id="adv-deck"></select></label>
+      <p id="adv-hint" class="muted small"></p>
+    </div>
+    <div id="adv-list" class="adv-list"></div>
+    <h2 class="adv-sub">Trening</h2>
+    <div id="adv-training" class="adv-list"></div>
+  </div>
+
   <!-- DRAFT -->
   <div id="tab-draft" class="tab-body hidden">
     <div class="play-grid">
@@ -101,7 +117,7 @@
         </div>
         <div id="draft-view-start">
            <p class="muted small">Skomponuj losową talię (1 Legenda, 2 Rzadkie, 17 Zwykłych) i walcz z innymi w trybie Draft.</p>
-           <button id="btn-draft-start" class="btn gold wide">Zacznij Draft (Koszt: 150 złota)</button>
+           <button id="btn-draft-start" class="btn gold wide">Zacznij Draft (za darmo)</button>
         </div>
       </div>
       <div class="panel">
@@ -254,6 +270,7 @@
       <div class="opp-hand" id="opp-hand"></div>
     </div>
     <div class="board-wrap">
+      <div class="hs-log" id="hs-log" title="Historia walki – najedź lub kliknij"></div>
       <div class="board" id="board-opp"></div>
       <div class="midline"><span id="turn-banner"></span></div>
       <div class="board" id="board-me"></div>
@@ -284,6 +301,7 @@
   </div>
   <div id="opp-left" class="opp-left hidden"><span id="opp-left-text"></span> <button id="btn-claim" class="btn gold small">Odbierz walkower</button></div>
   <div id="played" class="played hidden"></div>
+  <div id="hs-pop" class="hs-pop hidden"></div>
 </section>
 
 <!-- MODALE -->

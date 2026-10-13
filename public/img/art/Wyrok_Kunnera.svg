@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 300">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="45%" r="70%">
+      <stop offset="0" stop-color="#7a1410"/>
+      <stop offset=".55" stop-color="#2a0806"/>
+      <stop offset="1" stop-color="#0b0202"/>
+    </radialGradient>
+    <linearGradient id="wood" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#c58b4a"/>
+      <stop offset="1" stop-color="#5b3416"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="#ffe7a0"/>
+      <stop offset="1" stop-color="#b8862b"/>
+    </linearGradient>
+  </defs>
+  <rect width="360" height="300" fill="url(#bg)"/>
+  <g stroke="#ff5a3a" stroke-opacity=".35" stroke-width="2" fill="none">
+    <path d="M180 150 L20 20 M180 150 L340 20 M180 150 L0 160 M180 150 L360 160 M180 150 L40 300 M180 150 L320 300"/>
+  </g>
+  <circle cx="180" cy="150" r="96" fill="none" stroke="url(#gold)" stroke-width="4" stroke-dasharray="6 8" opacity=".7"/>
+  <text x="180" y="196" text-anchor="middle" font-family="Georgia, serif" font-weight="900" font-size="150" fill="#ffefe0" stroke="#3a0703" stroke-width="6" paint-order="stroke">6</text>
+  <g transform="translate(206 58) rotate(38)">
+    <rect x="-14" y="0" width="28" height="150" rx="10" fill="url(#wood)" stroke="#2a1606" stroke-width="3"/>
+    <rect x="-58" y="-34" width="116" height="52" rx="16" fill="url(#wood)" stroke="#2a1606" stroke-width="4"/>
+    <rect x="-62" y="-30" width="14" height="44" rx="5" fill="url(#gold)"/>
+    <rect x="48" y="-30" width="14" height="44" rx="5" fill="url(#gold)"/>
+  </g>
+  <path d="M96 252 h168 l-12 20 h-144z" fill="url(#wood)" stroke="#2a1606" stroke-width="3"/>
+</svg>

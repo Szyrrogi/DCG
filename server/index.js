@@ -7,6 +7,8 @@ const express = require('express');
 const { WebSocketServer } = require('ws');
 const { Game, GameError, CARDS, BY_NAME } = require('./engine');
 const { createStore } = require('./store');
+const AI = require('./ai');
+const { BOTS, REWARDS, botSeat, publicBots } = require('./bots');
 
 const PUBLIC_CARDS = CARDS.map(c => c.hiddenDeath ? { ...c, turnsUntilDeath: -1, hiddenDeath: undefined } : c);
 
@@ -15,7 +17,7 @@ const WIN_GOLD = 10;
 const BONUS_GOLD = 100;
 const BONUS_DISTINCT = 5;
 const DECK_SIZE = 20;
-const DRAFT_COST = 10;
+const DRAFT_COST = 0; // drafty są darmowe
 const PACKS = { std: { price: 50, label: 'Zwykła paczka' }, leg: { price: 500, label: 'Legendarna paczka' } };
 const START = { gold: 1000, std: 5, leg: 1 };
 const ACCOUNTS = [
@@ -60,7 +62,7 @@ function newUser(name, avatar, password = DEFAULT_PASSWORD) {
   return {
     id: 'u' + crypto.randomBytes(5).toString('hex'), username: name, salt, hash, avatar,
     gold: START.gold, dust: 0, packs: { std: START.std, leg: START.leg },
-    collection: {}, decks: [], defeated: [], draft: null, draftStreak: 0,
+    collection: {}, decks: [], defeated: [], draft: null, draftStreak: 0, adventure: {},
     stats: { wins: 0, losses: 0, bonuses: 0 }, sessions: [],
   };
 }
@@ -68,7 +70,7 @@ function newUser(name, avatar, password = DEFAULT_PASSWORD) {
 async function loadDb() {
   db = (await store.load()) || { users: [], history: [], market: [], trades: [], draftLeaderboard: [] };
   db.users = db.users || []; db.history = db.history || []; db.market = db.market || []; db.trades = db.trades || []; db.draftLeaderboard = db.draftLeaderboard || [];
-  for (const u of db.users) { u.avatar = validAvatar(u.avatar) || 'f1'; if (typeof u.dust !== 'number') u.dust = 0; }
+  for (const u of db.users) { u.avatar = validAvatar(u.avatar) || 'f1'; if (typeof u.dust !== 'number') u.dust = 0; if (!u.adventure || typeof u.adventure !== 'object') u.adventure = {}; }
   for (const [name, avatar, old] of ACCOUNTS) {
     const keys = [norm(name), ...old.map(norm)];
     const existing = db.users.find(u => keys.includes(norm(u.username)));
@@ -85,7 +87,8 @@ function publicProfile(u) {
   return {
     id: u.id, username: u.username, avatar: u.avatar, gold: u.gold, dust: u.dust, packs: u.packs,
     collection: u.collection, decks: u.decks, defeated: u.defeated, stats: u.stats, isAdmin: isAdmin(u),
-    rules: { winGold: WIN_GOLD, bonusGold: BONUS_GOLD, bonusDistinct: BONUS_DISTINCT, deckSize: DECK_SIZE, packs: PACKS, dust: DUST, cashOut: CASH_OUT },
+    adventure: u.adventure || {},
+    rules: { winGold: WIN_GOLD, bonusGold: BONUS_GOLD, bonusDistinct: BONUS_DISTINCT, deckSize: DECK_SIZE, packs: PACKS, dust: DUST, cashOut: CASH_OUT, draftCost: DRAFT_COST },
   };
 }
 
@@ -221,9 +224,79 @@ function stopSpectating(userId) {
   for (const [gid, set] of spectators) { set.delete(userId); if (!set.size) spectators.delete(gid); }
 }
 function sendGame(g) {
-  g.players.forEach((p, i) => sendTo(p.userId, { t: 'game', view: g.view(i) }));
+  g.players.forEach((p, i) => { if (!p.isBot) sendTo(p.userId, { t: 'game', view: g.view(i) }); });
   const set = spectators.get(g.id);
   if (set && set.size) { const sv = g.spectatorView(); for (const id of set) sendTo(id, { t: 'game', view: sv }); }
+  scheduleBot(g);
+}
+
+// ---------------- przeciwnik komputerowy ----------------
+const BOT_SPEED = Math.max(0, Number(process.env.BOT_DELAY_SCALE || 1)); // testy: 0.01
+const BOT_DELAY = { mulligan: 1400, mana: 650, play: 1350, attack: 1150, end: 900, choose: 1000, choiceIndex: 1000 };
+function scheduleBot(g) {
+  if (!g.bot || g.over || g.botTimer) return;
+  const seat = g.players.findIndex(p => p.isBot);
+  let a;
+  try { a = AI.decide(g, seat); } catch (e) { console.error('AI:', e); a = g.current === seat && !g.pending ? { type: 'end' } : null; }
+  if (!a) return;
+  const wait = ((BOT_DELAY[a.type] || 1000) + (g.turnFresh ? 700 : 0)) * BOT_SPEED;
+  g.turnFresh = false;
+  g.botTimer = setTimeout(() => {
+    g.botTimer = null;
+    if (g.over || !games.has(g.id)) return;
+    const before = g.current;
+    let now;
+    try { now = AI.decide(g, seat); } catch (e) { console.error('AI:', e); now = g.current === seat && !g.pending && g.phase === 'play' ? { type: 'end' } : null; }
+    if (!now) return;
+    try { g.action(seat, now); } catch (e) {
+      if (!(e instanceof GameError)) console.error('AI:', e);
+      try { if (g.current === seat && !g.pending && g.phase === 'play') g.action(seat, { type: 'end' }); } catch { }
+    }
+    if (g.current === seat && before !== seat) g.turnFresh = true;
+    sendGame(g);
+    if (g.over) settleGame(g);
+  }, wait);
+}
+
+function startBotGame(u, deck, bot) {
+  const id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const g = new Game(id, [
+    { userId: u.id, name: u.username, avatar: u.avatar, deck: deck.cards },
+    botSeat(bot),
+  ]);
+  g.bot = bot.id;
+  g.isDraft = false;
+  g.start();
+  g.mulliganEndsAt = Date.now() + 40_000;
+  g.turnFresh = true;
+  setTimeout(() => { if (g.phase === 'mulligan' && !g.over) { g.autoMulligan(); sendGame(g); } }, 40_500);
+  games.set(id, g);
+  userGame.set(u.id, id);
+  stopSpectating(u.id);
+  for (const k of [...challenges.keys()]) { const c = challenges.get(k); if (k === u.id || c.to === u.id) challenges.delete(k); }
+  sendGame(g); broadcastLobby();
+}
+
+function settleBotGame(g) {
+  const humanSeat = g.players.findIndex(p => !p.isBot);
+  const u = userById(g.players[humanSeat].userId);
+  const bot = BOTS[g.bot];
+  if (g.botTimer) { clearTimeout(g.botTimer); g.botTimer = null; }
+  userGame.delete(u.id);
+  const won = g.winner === humanSeat;
+  const rec = u.adventure[bot.id] || (u.adventure[bot.id] = { wins: 0, losses: 0 });
+  let gold = 0, first = false;
+  if (won) {
+    first = !rec.wins;
+    gold = first ? REWARDS[bot.kind].first : REWARDS[bot.kind].win;
+    rec.wins++; u.gold += gold;
+  } else rec.losses++;
+  scheduleSave();
+  sendTo(u.id, { t: 'gameOver', result: won ? 'win' : 'loss', reward: { gold, bonus: 0, first }, opponent: bot.name, reason: g.endReason, bot: bot.id, botKind: bot.kind });
+  for (const id of spectators.get(g.id) || []) sendTo(id, { t: 'spectateEnd', winner: g.players[g.winner].name, loser: g.players[1 - g.winner].name, reason: g.endReason });
+  spectators.delete(g.id);
+  setTimeout(() => games.delete(g.id), 10 * 60_000);
+  sendMe(u); broadcastLobby();
 }
 
 function startGame(aId, aDeck, bId, bDeck, isDraft) {
@@ -250,6 +323,7 @@ function startGame(aId, aDeck, bId, bDeck, isDraft) {
 function settleGame(g) {
   if (!g.over || g.settled) return;
   g.settled = true;
+  if (g.bot) return settleBotGame(g);
   const w = userById(g.players[g.winner].userId);
   const l = userById(g.players[1 - g.winner].userId);
   
@@ -326,7 +400,7 @@ function handle(ws, msg) {
     ws.userId = u.id;
     sockets.set(u.id, ws);
     offlineSince.delete(u.id);
-    send(ws, { t: 'auth', token, me: publicProfile(u), cards: PUBLIC_CARDS });
+    send(ws, { t: 'auth', token, me: publicProfile(u), cards: PUBLIC_CARDS, bots: publicBots() });
     send(ws, { t: 'market', ...marketState() });
     if (u.draft) send(ws, { t: 'draftState', draft: u.draft });
     const gid = userGame.get(u.id);
@@ -334,7 +408,7 @@ function handle(ws, msg) {
       const g = games.get(gid);
       send(ws, { t: 'game', view: g.view(g.players.findIndex(p => p.userId === u.id)) });
       const other = g.players.find(p => p.userId !== u.id);
-      sendTo(other.userId, { t: 'opponentBack', msg: `${u.username} wrócił do gry.` });
+      if (!other.isBot) sendTo(other.userId, { t: 'opponentBack', msg: `${u.username} wrócił do gry.` });
     }
     broadcastLobby();
     return;
@@ -375,62 +449,91 @@ function handle(ws, msg) {
       d.name = name; d.cards = cards; scheduleSave(); sendMe(u); return send(ws, { t: 'deckSaved', id: d.id });
     }
     case 'disenchant': {
+      // msg.cards: { nazwa: ilość } – rozbija podane kopie (tylko wolne, nie wystawione na rynku)
       const req = msg.cards && typeof msg.cards === 'object' ? msg.cards : { [msg.name]: msg.count || 1 };
       let gained = 0, n = 0;
       for (const [name, rawK] of Object.entries(req)) {
         const c = BY_NAME[name]; const k = Math.floor(Number(rawK));
         if (!c || !(k > 0)) return err('Zła karta do rozbicia.');
         const free = (u.collection[name] || 0) - offeredCount(u, name);
-        if (k > free) return err(`Nie masz wolnej kopii: ${name}.`);
+        if (k > free) return err(free > 0 ? `Możesz rozbić najwyżej ${free}× ${name}.` : `Nie masz wolnej kopii: ${name}${offeredCount(u, name) ? ' (jest wystawiona na rynku)' : ''}.`);
       }
       for (const [name, rawK] of Object.entries(req)) {
         const k = Math.floor(Number(rawK));
         u.collection[name] -= k; gained += DUST.disenchant[BY_NAME[name].rarity] * k; n += k;
       }
-      u.dust += gained; afterCollectionLoss(u); scheduleSave(); sendMe(u); broadcastMarket();
+      u.dust += gained;
+      afterCollectionLoss(u);
+      scheduleSave(); sendMe(u); broadcastMarket();
       return send(ws, { t: 'crafted', kind: 'disenchant', dust: gained, count: n });
     }
     case 'craft': {
-      const c = BY_NAME[msg.name]; if (!c) return err('Nieznana karta.');
-      const cost = DUST.craft[c.rarity]; if (u.dust < cost) return err(`Za mało pyłu.`);
-      u.dust -= cost; u.collection[c.name] = (u.collection[c.name] || 0) + 1;
-      scheduleSave(); sendMe(u); return send(ws, { t: 'crafted', kind: 'craft', name: c.name, dust: cost });
+      const c = BY_NAME[msg.name];
+      if (!c || c.token || c.hidden) return err('Nieznana karta.');
+      const cost = DUST.craft[c.rarity];
+      if (u.dust < cost) return err(`Za mało pyłu – potrzeba ${cost}, masz ${u.dust}.`);
+      u.dust -= cost;
+      u.collection[c.name] = (u.collection[c.name] || 0) + 1;
+      scheduleSave(); sendMe(u);
+      return send(ws, { t: 'crafted', kind: 'craft', name: c.name, dust: cost });
     }
     case 'marketPost': {
       const give = BY_NAME[msg.give], want = BY_NAME[msg.want];
-      if (!give || !want || give.name === want.name || give.rarity !== want.rarity) return err('Wymieniać można karty tej samej rzadkości.');
-      if ((u.collection[give.name] || 0) <= offeredCount(u, give.name)) return err(`Nie masz wolnej kopii.`);
-      if (userOffers(u).length >= MAX_OFFERS_PER_USER) return err(`Maksymalnie 10 ofert.`);
+      if (!give || !want || give.token || want.token) return err('Nieznana karta.');
+      if (give.name === want.name) return err('Wybierz inną kartę do otrzymania.');
+      if (give.rarity !== want.rarity) return err('Wymieniać można tylko karty tej samej rzadkości.');
+      if ((u.collection[give.name] || 0) <= offeredCount(u, give.name)) return err(`Nie masz wolnej kopii: ${give.name}.`);
+      if (userOffers(u).length >= MAX_OFFERS_PER_USER) return err(`Możesz mieć najwyżej ${MAX_OFFERS_PER_USER} ofert naraz.`);
+      // jeśli ktoś już oferuje dokładnie odwrotną wymianę – wymieniamy od razu
       const match = db.market.find(o => o.userId !== u.id && o.give === want.name && o.want === give.name);
       if (match) { executeTrade(match, u); return; }
       db.market.push({ id: 'o' + crypto.randomBytes(4).toString('hex'), userId: u.id, give: give.name, want: want.name, at: Date.now() });
-      scheduleSave(); broadcastMarket(); return send(ws, { t: 'toast', msg: 'Oferta wystawiona.' });
+      scheduleSave(); broadcastMarket();
+      return send(ws, { t: 'toast', msg: 'Oferta wystawiona na rynek.' });
     }
     case 'marketCancel': {
+      const before = db.market.length;
       db.market = db.market.filter(o => !(o.id === msg.id && o.userId === u.id));
-      scheduleSave(); broadcastMarket(); return;
+      if (db.market.length !== before) { scheduleSave(); broadcastMarket(); }
+      return;
     }
     case 'marketAccept': {
       const o = db.market.find(x => x.id === msg.id);
-      if (!o || o.userId === u.id || !(u.collection[o.want] > 0)) return err('Brak możliwości wymiany.');
+      if (!o) return err('Ta oferta już nie istnieje.');
+      if (o.userId === u.id) return err('To Twoja oferta.');
+      if (!(u.collection[o.want] > 0)) return err(`Nie masz karty ${o.want}.`);
       const maker = userById(o.userId);
       if (!maker || !(maker.collection[o.give] > 0)) { db.market = db.market.filter(x => x !== o); broadcastMarket(); return err('Wystawiający nie ma już tej karty.'); }
-      executeTrade(o, u); return;
+      executeTrade(o, u);
+      return;
     }
     case 'deleteDeck': u.decks = u.decks.filter(d => d.id !== msg.id); scheduleSave(); sendMe(u); return;
     case 'challenge': {
       const to = userById(msg.to);
-      if (!to || to.id === u.id || !sockets.has(to.id) || userGame.has(to.id) || userGame.has(u.id)) return err('Nie można wyzwać tego gracza.');
+      if (!to || to.id === u.id) return err('Nie można wyzwać tego gracza.');
+      if (!sockets.has(to.id)) return err(`${to.username} jest offline.`);
+      if (userGame.has(to.id)) return err(`${to.username} jest w trakcie gry.`);
+      if (userGame.has(u.id)) return err('Jesteś w trakcie gry.');
       if (msg.isDraft) {
           if (!u.draft || !u.draft.ready) return err('Nie masz gotowej talii draftu.');
           if (!to.draft || !to.draft.ready) return err(`${to.username} nie ma gotowej talii draftu.`);
           challenges.set(u.id, { to: to.id, isDraft: true, at: Date.now() });
       } else {
           const deck = u.decks.find(d => d.id === msg.deckId);
-          if (!deck || validateDeck(u, deck.cards)) return err('Wybierz poprawną talię.');
+          if (!deck) return err('Wybierz talię.');
+          const e = validateDeck(u, deck.cards); if (e) return err('Twoja talia jest niepoprawna: ' + e);
           challenges.set(u.id, { to: to.id, deckId: deck.id, isDraft: false, at: Date.now() });
       }
       sendTo(to.id, { t: 'challenged', from: u.id, fromName: u.username, isDraft: msg.isDraft }); broadcastLobby(); return;
+    }
+    case 'startBot': {
+      const bot = BOTS[msg.bot];
+      if (!bot) return err('Nie ma takiego przeciwnika.');
+      if (userGame.has(u.id)) return err('Jesteś już w grze.');
+      const deck = u.decks.find(d => d.id === msg.deckId);
+      if (!deck) return err('Wybierz talię.');
+      const e = validateDeck(u, deck.cards); if (e) return err('Twoja talia jest niepoprawna: ' + e);
+      startBotGame(u, deck, bot); return;
     }
     case 'cancelChallenge': challenges.delete(u.id); broadcastLobby(); return;
     case 'declineChallenge': challenges.delete(msg.from); broadcastLobby(); return;
@@ -462,6 +565,7 @@ function handle(ws, msg) {
     case 'claimWin': {
       const g = games.get(userGame.get(u.id));
       if (!g || g.over) return;
+      if (g.bot) return err('To gra z komputerem.');
       const i = g.players.findIndex(p => p.userId === u.id), other = g.players[1 - i].userId, since = offlineSince.get(other);
       if (sockets.has(other) || !since || Date.now() - since < FORFEIT_AFTER_MS) return err('Przeciwnik może wrócić.');
       g.say(`${g.players[1 - i].name} opuścił grę – walkower.`); g.finish(i, 'forfeit');
@@ -470,7 +574,7 @@ function handle(ws, msg) {
     
     // ---------- draft actions ----------
     case 'draftStart': {
-        if (u.gold < DRAFT_COST) return err('Za mało złota.');
+        if (DRAFT_COST > 0 && u.gold < DRAFT_COST) return err('Za mało złota.');
         u.gold -= DRAFT_COST;
         u.draft = { ready: false, round: 1, deck: [], choices: generateDraftChoices(1) };
         scheduleSave(); sendMe(u); send(ws, { t: 'draftState', draft: u.draft }); broadcastLobby(); return;
@@ -549,7 +653,7 @@ async function main() {
     },
   }));
   app.get('/health', (_req, res) => res.send('ok'));
-  app.get('/api/cards', (_req, res) => res.json(PUBLIC_CARDS.map(c => ({ name: c.name, art: c.art }))));
+  app.get('/api/cards', (_req, res) => res.json(PUBLIC_CARDS.filter(c => !c.hidden).map(c => ({ name: c.name, art: c.art }))));
   app.get('/api/users', (_req, res) => res.json(db.users.map(u => ({ username: u.username, avatar: u.avatar }))));
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -561,7 +665,7 @@ async function main() {
       if (ws.userId && sockets.get(ws.userId) === ws) {
         const id = ws.userId; sockets.delete(id); challenges.delete(id); stopSpectating(id); offlineSince.set(id, Date.now());
         const gid = userGame.get(id), g = gid && games.get(gid);
-        if (g && !g.over) sendTo(g.players.find(p => p.userId !== id).userId, { t: 'opponentLeft', at: Date.now(), waitMs: FORFEIT_AFTER_MS });
+        if (g && !g.over && !g.bot) sendTo(g.players.find(p => p.userId !== id).userId, { t: 'opponentLeft', at: Date.now(), waitMs: FORFEIT_AFTER_MS });
         broadcastLobby();
       }
     });

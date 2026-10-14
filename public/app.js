@@ -793,6 +793,8 @@ function act(action) { send({ t: 'act', action }); }
 
 S.queue = Promise.resolve(); S.queued = 0;
 function onGame(v) {
+  if (v.turnLeftMs != null) S.deadline = { at: performance.now() + v.turnLeftMs, turn: v.turnNo, limit: v.turnLimitMs };
+  else S.deadline = null;
   S.queued++;
   S.queue = S.queue.then(() => processView(v)).catch(e => console.error(e)).finally(() => S.queued--);
 }
@@ -1060,11 +1062,12 @@ function renderGame() {
   $('#board-me').classList.toggle('placing', !!placing);
   $$('#board-me .slot').forEach(el => el.onclick = e => { e.stopPropagation(); placeUnit(S.sel.uid, +el.dataset.pos); });
   const n = me.hand.length;
-  $('#hand-me').style.setProperty('--hm', n <= 5 ? '4px' : n <= 7 ? '-14px' : '-34px');
   const discarding = v.pending && v.pending.mine && v.pending.type === 'discard';
   $('#hand-me').innerHTML = me.hand.map(c => cardHtml(c.name, { cost: c.cost, cls: (discarding ? 'pick-discard' : c.playable ? 'playable' : '') + (S.sel && S.sel.uid === c.uid ? ' sel' : '') + (c.uid && c.uid.startsWith('g_') ? ' grave-pick' : ''), attrs: `data-uid="${c.uid}"` })).join('');
+  fitLayout();
   renderMulligan(v);
   renderChoice(v);
+  tickTimer();
   const tb = $('#turn-banner');
   tb.textContent = v.over ? 'KONIEC GRY' : v.spectator ? (v.phase === 'mulligan' ? 'WYMIANA KART' : `👀 TURA: ${v.currentName}`) : v.myTurn ? 'TWOJA TURA' : `TURA: ${op.name}`;
   tb.classList.toggle('mine', v.myTurn && !v.over);
@@ -1107,9 +1110,9 @@ function updateHint() {
   else if (v && v.spectator) t = v.phase === 'mulligan' ? '👀 Gracze wymieniają karty startowe…' : pd ? `👀 ${pd.who || 'Gracz'} wybiera…` : '';
   else if (pd && !pd.mine) t = pd.type === 'discard' ? 'Przeciwnik wybiera kartę do odrzucenia…' : 'Przeciwnik dokonuje wyboru…';
   else if (S.sel && S.sel.kind === 'attacker') t = v && v.opp.board.some(x => x.taunt) ? 'Najpierw musisz zaatakować jednostkę z Prowokacją 🛡' : 'Wybierz cel ataku: wrogą jednostkę lub bohatera';
-  else if (S.sel && S.sel.kind === 'spell') t = S.sel.any ? 'Wybierz cel: wrogą jednostkę lub bohatera' : 'Wybierz wrogą jednostkę';
+  else if (S.sel && S.sel.kind === 'spell') t = S.sel.any ? 'Wybierz cel (drugie kliknięcie karty = w bohatera)' : 'Wybierz wrogą jednostkę';
   else if (S.sel && S.sel.kind === 'preview') t = 'Stuknij ponownie, aby zagrać';
-  else if (S.sel && S.sel.kind === 'place') t = 'Wybierz miejsce na planszy (＋) – albo przeciągnij kartę';
+  else if (S.sel && S.sel.kind === 'place') t = TOUCH ? 'Stuknij ＋, żeby wybrać miejsce, albo jeszcze raz kartę' : 'Wybierz miejsce ＋, przeciągnij kartę albo kliknij ją drugi raz';
   h.textContent = t; h.classList.toggle('show', !!t);
 }
 
@@ -1124,8 +1127,14 @@ function onHandClick(uid) {
     renderGame(); return;
   }
   if (v.pending) { toast(v.pending.mine ? (v.pending.type === 'target' ? 'Najpierw wybierz jednostkę na planszy.' : 'Najpierw dokończ wybór.') : 'Poczekaj, przeciwnik wybiera.'); return; }
-  if (TOUCH && !(S.sel && S.sel.uid === uid)) { S.sel = { kind: 'preview', uid }; showTouchPreview(card.name); renderGame(); return; }
-  hidePreview();
+  // drugie kliknięcie w tę samą kartę zagrywa ją od razu (jednostka na koniec planszy, piosenka w bohatera)
+  if (S.sel && S.sel.uid === uid && S.sel.kind === 'place') { S.sel = null; hidePreview(); playCard(uid); return; }
+  if (S.sel && S.sel.uid === uid && S.sel.kind === 'spell' && S.sel.any) { S.sel = null; hidePreview(); playCard(uid, 'hero'); return; }
+  if (TOUCH && !(S.sel && S.sel.uid === uid)) {
+    showTouchPreview(card.name);
+    const choose = v.myTurn && card.playable && ((data.type === 'unit' && v.me.board.length) || data.target === 'enemyAny' || (data.target === 'enemyUnit' && v.opp.board.length));
+    if (!choose) { S.sel = { kind: 'preview', uid }; renderGame(); return; }
+  } else hidePreview();
   if (!v.myTurn) { toast('Poczekaj na swoją turę.'); S.sel = null; renderGame(); return; }
   if (!card.playable) { toast('Nie stać Cię na tę kartę – rozbuduj miasta (+).', true); S.sel = null; renderGame(); return; }
   if (data.target === 'enemyAny') { S.sel = { kind: 'spell', uid, any: true }; renderGame(); return; }
@@ -1189,6 +1198,49 @@ function placeUnit(uid, pos) {
   S.sel = null; renderGame();
   playCard(uid, undefined, pos);
 }
+// dopasowanie ręki i jednostek do szerokości ekranu (bez przewijania)
+function fitLayout() {
+  const hand = $('#hand-me'), cards = hand.querySelectorAll('.card');
+  if (cards.length) {
+    const cw = cards[0].offsetWidth, n = cards.length;
+    const cs = getComputedStyle(hand), W = hand.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    let hm = n > 1 ? (W - n * cw) / (2 * (n - 1)) : 4;
+    hm = Math.max(-(cw - 24) / 2, Math.min(4, hm));
+    hand.style.setProperty('--hm', hm.toFixed(1) + 'px');
+  }
+  for (const b of $$('.board')) {
+    b.style.removeProperty('--uw');
+    if (getComputedStyle(b).flexWrap !== 'nowrap') continue;
+    const items = [...b.children].filter(x => x.classList.contains('unit'));
+    const slots = [...b.children].filter(x => !x.classList.contains('unit'));
+    if (!items.length) continue;
+    const uw = items[0].offsetWidth, gap = parseFloat(getComputedStyle(b).columnGap) || 0;
+    const cs = getComputedStyle(b), W = b.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - slots.length * 16;
+    const need = items.length * uw + (items.length + slots.length - 1) * gap;
+    if (need > W) b.style.setProperty('--uw', Math.max(38, Math.floor((W - (items.length + slots.length - 1) * gap) / items.length)) + 'px');
+  }
+}
+let fitT = null;
+addEventListener('resize', () => { clearTimeout(fitT); fitT = setTimeout(() => { if (S.view && !$('#scr-game').classList.contains('hidden')) renderGame(); }, 120); });
+
+// licznik czasu tury (gry online)
+function tickTimer() {
+  const v = S.view, el = $('#turn-timer'), fuse = $('#fuse');
+  const d = S.deadline;
+  if (!v || v.over || v.phase !== 'play' || !d || d.turn !== v.turnNo) { el.classList.add('hidden'); fuse.classList.add('hidden'); return; }
+  const left = Math.max(0, d.at - performance.now()), s = Math.ceil(left / 1000);
+  el.classList.remove('hidden');
+  el.textContent = '⏱ ' + s;
+  el.classList.toggle('warn', s <= 15);
+  const fuseMs = 20000;
+  fuse.classList.toggle('hidden', left > fuseMs);
+  fuse.firstChild.style.width = Math.min(100, left / fuseMs * 100) + '%';
+  const end = $('#btn-end');
+  if (v.myTurn && !v.pending && s <= 15 && !end.disabled) end.textContent = `Koniec tury (${s})`;
+  if (v.myTurn && s <= 10 && s !== S.lastTick) { S.lastTick = s; SFX.play('click'); }
+}
+setInterval(tickTimer, 250);
+
 function boardSlots(n) {
   return Array.from({ length: n + 1 }, (_, k) => `<div class="slot" data-pos="${k}"><span>＋</span></div>`);
 }
@@ -1502,7 +1554,7 @@ function renderAdventure() {
     return `<div class="boss ${isBoss ? 'is-boss' : 'is-training'} ${rec.wins ? 'beaten' : ''}">
       <div class="boss-portrait">${avImg(b.avatar)}${rec.wins ? '<span class="boss-crown" title="Pokonany">👑</span>' : ''}</div>
       <div class="boss-info">
-        <div class="boss-kind">${isBoss ? 'Boss ' + '★'.repeat(b.id === 'casborg' ? 1 : b.id === 'kunner' ? 2 : 3) : 'Trening'}</div>
+        <div class="boss-kind">${isBoss ? 'Boss ' + '★'.repeat(b.stars || 1) : 'Trening'}</div>
         <h3>${esc(b.name)}</h3>
         <div class="boss-title muted small">${esc(b.title)}</div>
         <p class="boss-rule">${esc(b.rule)}</p>

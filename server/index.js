@@ -10,7 +10,12 @@ const { createStore } = require('./store');
 const AI = require('./ai');
 const { BOTS, REWARDS, botSeat, publicBots } = require('./bots');
 
-const PUBLIC_CARDS = CARDS.map(c => c.hiddenDeath ? { ...c, turnsUntilDeath: -1, hiddenDeath: undefined } : c);
+// ukryte zdolności nie trafiają do klienta (Gustav znika, Lazarus wraca)
+const PUBLIC_CARDS = CARDS.map(c => {
+  if (c.hiddenDeath) return { ...c, turnsUntilDeath: -1, hiddenDeath: undefined };
+  if (c.passive === 'ReviveOnce') return { ...c, passive: '' };
+  return c;
+});
 
 const PORT = process.env.PORT || 3000;
 const WIN_GOLD = 10;
@@ -32,6 +37,7 @@ const CASH_OUT = { 3: 30, 4: 60 };
 const DUST = { disenchant: { 1: 5, 2: 20, 3: 100 }, craft: { 1: 40, 2: 100, 3: 400 } };
 const DEFAULT_PASSWORD = 'haslo';
 const FORFEIT_AFTER_MS = 60_000;
+const TURN_LIMIT_MS = Number(process.env.TURN_LIMIT_MS || 67_000); // limit tury w grze online (67 s)
 
 const store = createStore();
 let db = null;
@@ -228,6 +234,37 @@ function sendGame(g) {
   const set = spectators.get(g.id);
   if (set && set.size) { const sv = g.spectatorView(); for (const id of set) sendTo(id, { t: 'game', view: sv }); }
   scheduleBot(g);
+  armTurnTimer(g);
+}
+
+// ---------------- limit czasu tury (gry online) ----------------
+function armTurnTimer(g) {
+  if (!g.turnLimitMs || g.over || g.phase !== 'play') return;
+  const key = g.turnNo;
+  if (g.timerKey === key) return;
+  clearTimeout(g.turnTimer);
+  g.timerKey = key;
+  g.turnTimer = setTimeout(() => onTurnTimeout(g, key), Math.max(0, g.turnStartedAt + g.turnLimitMs - Date.now()) + 250);
+}
+function onTurnTimeout(g, key) {
+  if (g.over || g.turnNo !== key || !games.has(g.id)) return;
+  const i = g.current;
+  try {
+    // niedokończone wybory rozstrzygamy losowo, potem koniec tury
+    let guard = 0;
+    while (g.pending && g.pending.player === i && guard++ < 10) {
+      const q = g.pending, p = g.players[i];
+      if (q.type === 'discard') g.action(i, { type: 'choose', uid: g.pick(p.hand).uid });
+      else if (q.type === 'target') g.action(i, { type: 'choose', uid: g.pick(q.options) });
+      else g.action(i, { type: 'choiceIndex', index: Math.floor(Math.random() * q.options.length) });
+    }
+    if (!g.over && g.current === i && g.turnNo === key) {
+      g.say(`${g.players[i].name} – czas minął!`);
+      g.action(i, { type: 'end' });
+    }
+  } catch (e) { console.error('Limit tury:', e); }
+  sendGame(g);
+  if (g.over) settleGame(g);
 }
 
 // ---------------- przeciwnik komputerowy ----------------
@@ -266,7 +303,8 @@ function startBotGame(u, deck, bot) {
   ]);
   g.bot = bot.id;
   g.isDraft = false;
-  g.current = 0; // z botem zawsze zaczyna gracz
+  g.current = bot.botStarts ? 1 : 0; // z botem zaczyna gracz (poza Maestro)
+  if (bot.flatCost != null) g.flatCost = bot.flatCost;
   g.start();
   g.mulliganEndsAt = Date.now() + 40_000;
   g.turnFresh = true;
@@ -308,6 +346,7 @@ function startGame(aId, aDeck, bId, bDeck, isDraft) {
     { userId: b.id, name: b.username, avatar: b.avatar, deck: bDeck.cards },
   ]);
   g.isDraft = isDraft;
+  g.turnLimitMs = TURN_LIMIT_MS;
   g.start();
   g.mulliganEndsAt = Date.now() + 40_000;
   setTimeout(() => { if (g.phase === 'mulligan' && !g.over) { g.autoMulligan(); sendGame(g); } }, 40_500);
@@ -324,6 +363,7 @@ function startGame(aId, aDeck, bId, bDeck, isDraft) {
 function settleGame(g) {
   if (!g.over || g.settled) return;
   g.settled = true;
+  clearTimeout(g.turnTimer);
   if (g.bot) return settleBotGame(g);
   const w = userById(g.players[g.winner].userId);
   const l = userById(g.players[1 - g.winner].userId);

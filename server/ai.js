@@ -161,8 +161,8 @@ function bestMove(g, seat, moves) {
 function cityDemand(g, seat, c) {
   const P = g.players[seat], lvl = P.mana[c].lvl;
   let d = 0;
-  for (const x of P.hand) { const need = BY_NAME[x.name].cost[c]; if (need > lvl) d += 2.5 / (need - lvl); }
-  for (const x of P.deck) { const need = BY_NAME[x.name].cost[c]; if (need > lvl) d += 1 / (need - lvl); }
+  for (const x of P.hand) { const need = g.effectiveCost(seat, x)[c]; if (need > lvl) d += 2.5 / (need - lvl); }
+  for (const x of P.deck) { const need = g.effectiveCost(seat, x)[c]; if (need > lvl) d += 1 / (need - lvl); }
   return d;
 }
 function chooseManaBuild(g, seat) {
@@ -189,7 +189,7 @@ function mulliganPick(g, seat) {
   const P = g.players[seat];
   const out = [];
   for (const c of P.hand) {
-    const d = BY_NAME[c.name], cost = d.cost;
+    const cost = g.effectiveCost(seat, c);
     const city = Math.max(...CITIES.map(k => cost[k] - P.mana[k].lvl));
     const total = cost.T + cost.W + cost.B + cost.D - CITIES.reduce((s, k) => s + Math.min(cost[k], P.mana[k].lvl), 0);
     if (city >= 3 || total >= 5) out.push(c.uid);

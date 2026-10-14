@@ -38,6 +38,7 @@ class Game {
       hp: s.hp || START_HP,
       isBot: !!s.isBot,
       openingSpell: s.openingSpell || null,
+      stealDeaths: !!s.stealDeaths,
       turnsTaken: 0,
       originalDeck: s.deck.slice(),
       deck: shuffle(s.deck.filter(n => BY_NAME[n]).map(n => this.newCard(n)), rng),
@@ -59,6 +60,9 @@ class Game {
       if (s.startMana) for (const c of CITIES) if (s.startMana[c]) this.players[k].mana[c].lvl = Math.min(MANA_MAX, s.startMana[c]);
     });
     this.events = [];
+    this.deferred = [];      // jednostki, które wejdą na planszę po rozpatrzeniu akcji (Lazarus, El Sahar)
+    this.flatCost = null;    // Maestro Rigoberto: każda karta kosztuje tyle many dowolnej
+    this.turnLimitMs = null; // gra online: limit czasu tury
     this.evSeq = 0;
     this.ev = null;
     this.uidInfo = {};
@@ -326,14 +330,17 @@ class Game {
     const d = this.data(card), me = this.players[i], them = this.players[this.opp(i)];
     if (d.effect === 'LastPedalChoice') return me.board.length > 0 || them.board.some(u => this.hasTag(u, 'Lewc'));
     if (d.type === 'spell' && (d.effect === 'DestroyTargetMinion' || d.effect === 'DestroyAndOpponentDraws')) return them.board.length > 0;
+    if (d.effect === 'MillOpponent') return them.deck.length > 0;
     return true;
   }
 
   available(p, city) { const m = p.mana[city]; return m.lvl - m.used; }
 
+  graveCost() { return { T: 0, W: 0, B: 0, D: this.flatCost != null ? this.flatCost : 2 }; }
+
   effectiveCost(i, card) {
     const d = this.data(card);
-    const cost = { ...d.cost };
+    const cost = this.flatCost != null ? { T: 0, W: 0, B: 0, D: this.flatCost } : { ...d.cost };
     if (d.type === 'spell') {
       let discount = this.players[i].board.filter(u => this.data(u).passive === 'SongsDiscounted').length;
       const fromD = Math.min(cost.D, discount); cost.D -= fromD; discount -= fromD;
@@ -509,12 +516,28 @@ class Game {
     p.board.splice(idx, 1);
     p.grave.push(unit.name);
     if (!vanish) {
-        p.dead.push(unit.name);
-        if (this.data(unit).passive === 'ReviveOnce' && !unit.revived) {
-            p.reviveNextTurn.push(unit.name);
-        }
+        const thief = this.players[this.opp(i)];
+        if (thief.stealDeaths) {
+            p.grave.pop();
+            this.deferred.push({ seat: this.opp(i), name: unit.name, stolen: true });
+        } else if (this.data(unit).passive === 'ReviveOnce' && !unit.revived) {
+            this.deferred.push({ seat: i, name: unit.name, revived: true, pos: idx });
+        } else p.dead.push(unit.name);
     }
     this.fx.push({ type: 'die', id: unit.uid });
+  }
+
+  flushDeferred() {
+    let guard = 0;
+    while (this.deferred.length && guard++ < 40) {
+      const q = this.deferred.shift(), p = this.players[q.seat];
+      if (p.board.length >= BOARD_LIMIT) { this.say(`Plansza pełna – ${q.name} przepada.`); continue; }
+      const u = this.summon(q.seat, this.newCard(q.name), { battlecry: false, pos: q.pos });
+      if (!u) continue;
+      u.attacksLeft = 0;
+      if (q.revived) { u.revived = true; this.say(`${q.name} wraca na planszę!`); }
+      if (q.stolen) this.say(`${p.name} przejmuje poległego: ${q.name}!`);
+    }
   }
 
   sweep() {
@@ -523,6 +546,7 @@ class Game {
         if (u.hp <= 0) { this.destroyUnit(i, u); this.say(`${u.name} ginie.`); }
       }
     }
+    this.flushDeferred();
   }
 
   returnToHand(i, unit) {
@@ -650,9 +674,10 @@ class Game {
       }
       case 'BuffPerCardInHand': if (src) { const n = me.hand.length; src.hp += n; src.maxHp += n; } break;
       case 'AddRandomSpellToHand': {
-        const spells = me.deck.filter(c => this.data(c).type === 'spell');
-        const c = this.pick(spells);
-        if (c) { me.deck.splice(me.deck.indexOf(c), 1); this.toHand(i, c); }
+        // tworzy nową, losową piosenkę z puli wszystkich piosenek w grze (talia zostaje bez zmian)
+        const pool = CARDS.filter(c => c.type === 'spell' && !c.token && !c.hidden);
+        const sp = this.pick(pool);
+        if (sp && this.toHand(i, this.newCard(sp.name))) this.say(`${me.name} dostaje nową piosenkę.`);
         break;
       }
       case 'OpponentDiscardsCard': this.discardRandom(o); break;
@@ -708,12 +733,34 @@ class Game {
         break;
       }
       case 'HalfBydgoszczMana': case 'ManaCrystal': {
-        const opts = CITIES.filter(c => me.mana[c].lvl < MANA_MAX).map(c => {
-          const m = me.mana[c], need = MANA_COSTS[m.lvl];
-          return { key: c, name: CITY_NAMES[c], desc: m.prog + 1 >= need ? `Nowa kula: ${m.lvl} → ${m.lvl + 1}` : `Budowa kuli: ${m.prog + 1}/${need}` };
-        });
-        if (!opts.length) { this.say('Wszystkie miasta są już rozbudowane.'); break; }
-        this.queue({ player: i, type: 'choice', options: opts, context: { action: 'manaCity' }, autoSingle: true });
+        if (this.addManaProgress(me, 'B')) { this.say(`${me.name} rozbudowuje Bydgoszcz.`); this.fx.push({ type: 'mana', by: i, city: 'B' }); }
+        else this.say('Bydgoszcz jest już w pełni rozbudowana.');
+        break;
+      }
+      case 'MillOpponent': {
+        const c = them.deck.shift();
+        if (!c) { this.say(`${them.name} nie ma kart w talii.`); break; }
+        them.grave.push(c.name);
+        if (this.data(c).type === 'unit') them.dead.push(c.name);
+        this.fx.push({ type: 'discard', by: o, name: c.name });
+        this.say(`${them.name} traci z wierzchu talii: ${c.name}.`);
+        break;
+      }
+      case 'PurgeLegends': {
+        let n = 0;
+        const legend = c => BY_NAME[c.name] && BY_NAME[c.name].rarity === 3;
+        for (const pi of [0, 1]) {
+          const P = this.players[pi];
+          for (const u of P.board.filter(legend)) { this.destroyUnit(pi, u, { vanish: true }); n++; }
+          for (const c of P.hand.filter(legend)) { P.hand.splice(P.hand.indexOf(c), 1); P.grave.push(c.name); this.fx.push({ type: 'discard', by: pi, name: c.name }); n++; }
+          for (const c of P.deck.filter(legend)) { P.deck.splice(P.deck.indexOf(c), 1); P.grave.push(c.name); n++; }
+        }
+        this.say(n ? `Devszyr usuwa ${n} ${n === 1 ? 'legendę' : n < 5 ? 'legendy' : 'legend'}!` : 'Devszyr nie znalazł żadnej legendy.');
+        break;
+      }
+      case 'SwapDecks': {
+        [me.deck, them.deck] = [them.deck, me.deck];
+        this.say(`${me.name} zamienia talie! ${them.name} dobiera teraz z talii przeciwnika.`);
         break;
       }
       case 'DiscardCardFromHand': this.queue({ player: i, type: 'discard', count: 1 }); break;
@@ -817,15 +864,6 @@ class Game {
     p.turnsTaken = (p.turnsTaken || 0) + 1;
     this.beginEvent(i, 'turn', null);
     
-    if (p.reviveNextTurn && p.reviveNextTurn.length) {
-        for (const name of p.reviveNextTurn) {
-            this.say(`${name} wraca na planszę!`);
-            const u = this.summon(i, this.newCard(name), { battlecry: false });
-            if (u) u.revived = true;
-        }
-        p.reviveNextTurn = [];
-    }
-
     this.draw(i);
     this.closeEvent();
     for (const u of p.board.slice()) {
@@ -836,6 +874,7 @@ class Game {
           this.beginEvent(i, 'trigger', u.name, { uid: u.uid });
           for (const pi of [0, 1]) for (const target of this.players[pi].board.slice()) this.destroyUnit(pi, target);
           this.say(`${u.name} niszczy wszystkich stronników!`);
+          this.flushDeferred();
           this.closeEvent();
           continue;
       }
@@ -846,6 +885,7 @@ class Game {
         if (u.turnsAlive >= d.turnsUntilDeath) { this.destroyUnit(i, u, { vanish: true }); }
       }
     }
+    this.flushDeferred();
     if (p.openingSpell && p.turnsTaken === 1 && !this.over) {
       const sp = BY_NAME[p.openingSpell];
       this.beginEvent(i, 'spell', sp.name);
@@ -853,7 +893,7 @@ class Game {
       this.say(`${p.name} rzuca ${sp.name}!`);
       this.runEffect(sp.effect, sp.value, i, false, null);
       this.closeEvent();
-      // Wyrok kosztuje 1 – w tej turze nie da się już nic zagrać, a zbudowana mana idzie na Wyrok
+      // zaklęcie startowe kosztuje 1 – w tej turze nie da się już nic zagrać, a zbudowana mana idzie na nie
       p.spellLock = true;
     }
     this.checkEnd();
@@ -924,7 +964,7 @@ class Game {
             const name = p.grave[idx];
             if (!name || !BY_NAME[name] || BY_NAME[name].passive !== 'PlayableFromGraveyard') throw new GameError('Zła karta.');
             card = { uid: 'c' + (uidCounter++), name };
-            cost = { T:0, W:0, B:0, D:2 };
+            cost = this.graveCost();
             fromGrave = true;
         } else {
             card = p.hand.find(c => c.uid === a.uid);
@@ -1056,7 +1096,7 @@ class Game {
     };
     
     const gravePlayables = me.grave.map((n, idx) => ({ n, idx })).filter(x => BY_NAME[x.n] && BY_NAME[x.n].passive === 'PlayableFromGraveyard').map(({ n, idx }) => ({
-        uid: 'g_' + idx, name: n, cost: { T:0, W:0, B:0, D:2 }, playable: this.phase === 'play' && !this.pending && this.current === i && !this.over && this.canPay(me, { T:0, W:0, B:0, D:2 }) && me.board.length < BOARD_LIMIT 
+        uid: 'g_' + idx, name: n, cost: this.graveCost(), playable: this.phase === 'play' && !this.pending && this.current === i && !this.over && this.canPay(me, this.graveCost()) && me.board.length < BOARD_LIMIT 
     }));
 
     return {
@@ -1073,6 +1113,8 @@ class Game {
       log: this.log.slice(-30).map(l => l.text),
       events: this.publicEvents(),
       fx: this.fx, turnStartedAt: this.turnStartedAt,
+      turnLeftMs: this.turnLimitMs && this.phase === 'play' && !this.over ? Math.max(0, this.turnStartedAt + this.turnLimitMs - Date.now()) : null,
+      turnLimitMs: this.turnLimitMs, flatCost: this.flatCost,
     };
   }
 }

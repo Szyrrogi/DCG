@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server/index.js",
     "test": "node test/engine.test.js && node test/ai.test.js",
-    "test:all": "node test/engine.test.js && node test/market.test.js && node test/craft.test.js && node test/spectate.test.js && node test/server.test.js && node test/bots.test.js",
+    "test:all": "node test/engine.test.js && node test/market.test.js && node test/craft.test.js && node test/spectate.test.js && node test/server.test.js && node test/bots.test.js && node test/timer.test.js",
     "test:ai": "node test/ai.test.js"
   },
   "engines": {

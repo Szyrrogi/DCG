@@ -612,3 +612,93 @@ table.admin { width: 100%; border-collapse: collapse; }
 .drag-ghost { position: fixed; z-index: 50; pointer-events: none; transform: translate(-50%, -60%) rotate(-4deg) scale(.85); --cw: 130px; filter: drop-shadow(0 12px 18px rgba(0,0,0,.7)); }
 .hand .card.dragging { opacity: .35; }
 @media (max-width: 720px) { #board-me .slot { width: 20px; } }
+
+/* ================= układ walki v2: wyśrodkowanie, telefony ================= */
+:root { --uw: clamp(84px, min(7.2vw, 12.5vh), 128px); }
+.battle { grid-template-rows: 1fr 1fr auto; grid-template-areas: "opp board log" "me board log" "me hand log"; }
+.board-wrap { padding-right: calc(200px - 84px); }
+.hand { padding-right: calc(200px - 84px + 10px); }
+.hand .card { margin: 0 var(--hm, 4px); }
+.unit .stat { font-size: max(11px, 1.5em); }
+.midline { position: relative; display: flex; justify-content: center; align-items: center; gap: 10px; }
+.turn-timer { font-weight: 800; font-size: 13px; padding: 2px 10px; border-radius: 99px; background: rgba(0,0,0,.6); border: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.turn-timer.warn { color: #ffb4a8; border-color: var(--red); animation: tpulse 1s infinite; }
+@keyframes tpulse { 50% { box-shadow: 0 0 14px var(--red); } }
+.fuse { position: absolute; left: 8%; right: 8%; top: 50%; height: 4px; transform: translateY(-50%); background: rgba(0,0,0,.45); border-radius: 4px; z-index: -1; display: flex; justify-content: center; }
+.fuse i { display: block; height: 100%; background: linear-gradient(90deg, #ff3b2f, #ffb400, #ff3b2f); border-radius: 4px; position: relative; transition: width .25s linear; box-shadow: 0 0 10px #ff6a2f; }
+.fuse i::before, .fuse i::after { content: ''; position: absolute; top: 50%; width: 10px; height: 10px; border-radius: 50%; background: #fff3c4; box-shadow: 0 0 12px 4px #ffb400; transform: translate(-50%, -50%); animation: spark .3s infinite alternate; }
+.fuse i::before { left: 0; } .fuse i::after { left: 100%; }
+@keyframes spark { to { transform: translate(-50%, -50%) scale(1.5); opacity: .7; } }
+
+@media (max-width: 1100px) {
+  .battle { grid-template-areas: "opp board log" "me board log" "me hand log"; }
+  :root { --uw: clamp(70px, min(8vw, 12vh), 100px); }
+  .board-wrap { padding-right: calc(170px - 66px); }
+  .hand { padding-right: calc(170px - 66px + 10px); }
+}
+
+/* telefon pionowo */
+@media (max-width: 720px) {
+  :root { --uw: 62px; --cw: 96px; }
+  .hand { --cw: 96px; overflow: visible; justify-content: center; padding: 30px 4px 4px; }
+  .hand .card { margin: 0 var(--hm, -10px); flex-shrink: 0; }
+  .battle { grid-template-columns: minmax(0, 1fr) 46px; grid-template-rows: auto 1fr auto auto; grid-template-areas: "opp log" "board log" "me log" "hand log"; }
+  .board-wrap { padding-right: 0; }
+  .side.opp .pile { display: flex; }
+  .side .pile .deckpile { width: 30px; height: 42px; }
+  .side .pile { gap: 6px; }
+  .pile-txt { font-size: 11px; gap: 2px; }
+  .grave-btn { font-size: 11px; padding: 0 6px; }
+  .side.opp { justify-content: space-between; }
+  .board { gap: 5px; padding: 3px; }
+  .midline { height: 24px; }
+  #turn-banner { font-size: 12px; padding: 1px 10px; }
+  .turn-timer { font-size: 12px; padding: 1px 8px; }
+  .hs-log .hl-tile { width: 34px; height: 34px; border-width: 2px; }
+}
+
+/* telefon poziomo (niski ekran) */
+@media (max-height: 520px) and (orientation: landscape) {
+  :root { --uw: clamp(46px, 16vh, 76px); --cw: 76px; }
+  body { font-size: 13px; }
+  .battle { grid-template-columns: 150px minmax(0, 1fr) 46px; grid-template-rows: 1fr 1fr auto; grid-template-areas: "opp board log" "me board log" "me hand log"; }
+  .side { flex-direction: column; align-items: stretch; padding: 4px 6px; gap: 4px; flex-wrap: nowrap; }
+  .side.me { justify-content: flex-end; }
+  .hero-area { gap: 8px; align-items: center; }
+  .hero { width: 52px; height: 62px; border-width: 2px; }
+  .hero .hp { width: 26px; height: 26px; font-size: 13px; right: -6px; bottom: -6px; }
+  .hero .nm { top: -10px; }
+  .hero .nm span { font-size: 10px; padding: 0 5px; }
+  .hero .sp { font-size: 10px; }
+  .side .pile, .side.opp .pile { display: flex; gap: 6px; }
+  .side .pile .deckpile { width: 26px; height: 36px; }
+  .deckpile b { font-size: 11px; right: -6px; bottom: -4px; padding: 0 4px; }
+  .pile-txt { font-size: 10.5px; gap: 1px; }
+  .grave-btn { font-size: 10.5px; padding: 0 5px; }
+  .mana-row { gap: 2px; }
+  .mana-col { padding: 1px 3px 1px 1px; gap: 2px; }
+  .mana-ic { width: 16px; height: 16px; }
+  .orb { width: 9px; height: 9px; }
+  .mana-col .plus { width: 18px; height: 18px; font-size: 12px; }
+  .mana-col .tot { display: none; }
+  .opp-hand { display: none; }
+  .end-btn { font-size: 12px; padding: 6px 4px; width: auto; white-space: normal; }
+  .board-wrap { padding: 2px 0; padding-right: calc(150px - 46px); gap: 0; }
+  .board { gap: 6px; padding: 2px; flex-wrap: nowrap; min-height: calc(var(--uw) * 1.3 + 6px); }
+  .midline { height: 18px; }
+  #turn-banner { font-size: 11px; padding: 0 10px; }
+  .turn-timer { font-size: 11px; padding: 0 8px; }
+  .hand { --cw: 76px; padding: 0 calc(150px - 46px + 4px) 0 4px; min-height: 0; height: calc(var(--cw) * 1.4 * .42); overflow: visible; align-items: flex-start; }
+  .hand .card:hover, .hand .card.sel { transform: translateY(-62%) scale(1.25); }
+  .log-head { padding: 4px 2px; gap: 4px; }
+  .log-head .btn { width: 36px; font-size: 12px; padding: 3px 0; }
+  .hs-title { display: none; }
+  .hs-log .hl-tile { width: 32px; height: 32px; border-width: 2px; }
+  .hint { font-size: 12px; top: 4px; padding: 3px 10px; }
+  .mulligan { gap: 8px; padding: 8px; }
+  .mulligan h2 { font-size: 18px; margin: 0; }
+  .mull-cards { --cw: min(110px, 28vh); gap: 10px; }
+  .choice-src { --cw: 110px; }
+  .choice-opt { padding: 8px 12px; }
+  .turn-splash { font-size: 28px; }
+}

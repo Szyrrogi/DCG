@@ -58,19 +58,33 @@ rozjazdów jak przy synchronizacji Photonem. Działa na komputerze i telefonie.
 - Odrzucone jednostki trafiają na cmentarz jako polegli – Agnieszka może je wskrzesić.
 - **Wcześniejsza wypłata bonusu**: przy 3/5 pokonanych możesz wypłacić 30 złota, przy 4/5 – 60 złota
   (przycisk w zakładce Graj). Wypłata resetuje serię.
-- **Przygoda** (zakładka *Przygoda*): trzech bossów sterowanych przez AI. W grze z botem zawsze zaczyna gracz. Pierwsze pokonanie bossa daje
+- **Przygoda** (zakładka *Przygoda*): sześciu bossów sterowanych przez AI. W grze z botem zaczyna gracz
+  (poza Maestro Rigoberto). Pierwsze pokonanie bossa daje
   **+30 złota**, każde kolejne **+10 złota**.
   - **Cas-Borg** – startuje z 40 zdrowia; talia pali własne HP (Eva, Moja Przygoda) i bije Mocą pieśni.
   - **Kunner** – w swojej pierwszej turze rzuca *Wyrok Kunnera* (Twoje zdrowie = 6, koszt 1 – w tej turze
     Kunner nie zagra już nic więcej). Tej karty nie ma
     w kolekcji, paczkach, drafcie ani wytwarzaniu. Talia: najszybsze dissy i szarża.
   - **Baron Tczewa** – zaczyna z 3 kulami Tczewa i od pierwszej tury stawia ciężkie jednostki.
+  - **Ciota** – ma najgorszą talię w grze i w swojej pierwszej turze rzuca *Zamianę talii* (koszt 1, cała tura):
+    od tej chwili dobierasz jego śmieci, a on Twoje karty.
+  - **Maestro Rigoberto** – każda karta (obu graczy) kosztuje 1 manę dowolną, ale Maestro zaczyna.
+  - **El Sahar** – gdy zginie Twój stronnik, pojawia się po jego stronie planszy.
   - **Trener** – bot treningowy ze zwykłą talią kontrolną, **+5 złota** za każdą wygraną.
   Gry z botami nie liczą się do rankingu ani serii 5 pokonanych.
 - **Historia walki** jak w Hearthstone: pasek ikon po prawej stronie ekranu (niebieska ramka = Ty,
   czerwona = przeciwnik), zamiast dawnego tekstowego dziennika. Najedź (lub stuknij), żeby zobaczyć
   zagraną kartę/zaklęcie/atak, cel i skutki: obrażenia, leczenie, śmierci, wzmocnienia, odrzucone karty.
-- **Karo As** kosztuje 2 many Tczewa.
+- **Karo As** (1 Tczew) odrzuca kartę z wierzchu talii przeciwnika.
+- **Mordekaiser** rozbudowuje Bydgoszcz (jak „+”, bez zużycia Twojej rozbudowy).
+- **Devszyr** (2 Tczew, 3 Warszawa, 1 Bydgoszcz) usuwa wszystkie legendy z talii, rąk i planszy obu graczy.
+- **Lazarus** po pierwszej śmierci od razu wraca na swoje miejsce (zdolność jest ukryta), ale w tej turze nie atakuje.
+- **Wampir** 4/4, **Kamikaze** 5/5.
+- **Limit tury online: 67 sekund.** Licznik ⏱ jest obok napisu tury, w ostatnich 20 s pali się lont,
+  a po czasie tura kończy się sama (niedokończone wybory rozstrzygają się losowo). Gry z botami nie mają limitu.
+- **Dwuklik na kartę** zagrywa ją od razu: jednostkę na koniec planszy, piosenkę z celem – w bohatera.
+- **Telefony**: osobny układ pionowy i poziomy – cała ręka mieści się bez przewijania, widać talię,
+  rękę i cmentarz przeciwnika, a jednostki dopasowują się do szerokości ekranu.
 - **Ustawianie jednostek**: zagrywana jednostka nie ląduje już zawsze z prawej. Kliknij kartę i wybierz
   miejsce ＋ między jednostkami albo przeciągnij kartę w wybrane miejsce na planszy (ważne np. przy Rowerze).
   AI też ustawia jednostki obok Rowera.
@@ -153,7 +167,7 @@ budzi się sam).
 
 ```
 npm test            # silnik walki (efekty kart + 5000 losowych gier) + AI
-npm run test:all    # + rynek, wytwarzanie, obserwator, serwer, przygoda (gry z botami i nagrody)
+npm run test:all    # + rynek, wytwarzanie, obserwator, serwer, przygoda (gry z botami i nagrody), limit tury
 ```
 Na GitHubie testy uruchamiają się same przy każdym pushu (zakładka **Actions → Testy**).
 

@@ -1,7 +1,7 @@
 [
   {
     "name": "26gang",
-    "desc": "Okrzyk Bojowy: Dodaj do ręki losową piosenkę",
+    "desc": "Okrzyk Bojowy: Stwórz losową piosenkę (z wszystkich w grze) i dodaj ją do ręki",
     "rarity": 1,
     "cost": {
       "T": 1,
@@ -505,7 +505,7 @@
   },
   {
     "name": "Mordekaiser",
-    "desc": "Okrzyk Bojowy: Rozbuduj wybrane miasto (tak jak przyciskiem +). Nie zużywa Twojej rozbudowy w tej turze",
+    "desc": "Okrzyk Bojowy: Rozbuduj Bydgoszcz (tak jak przyciskiem +). Nie zużywa Twojej rozbudowy w tej turze",
     "rarity": 1,
     "cost": {
       "T": 1,
@@ -973,19 +973,19 @@
   },
   {
     "name": "Karo As",
-    "desc": "Niszczy stronnika, przeciwnik dobiera 2 karty.",
+    "desc": "Odrzuć kartę z wierzchu talii przeciwnika",
     "rarity": 1,
     "cost": {
-      "T": 2,
+      "T": 1,
       "W": 0,
       "B": 0,
       "D": 0
     },
     "type": "spell",
-    "effect": "DestroyAndOpponentDraws",
+    "effect": "MillOpponent",
     "value": 0,
     "art": "Karo_As.webp",
-    "target": "enemyUnit"
+    "target": ""
   },
   {
     "name": "Krzesło",
@@ -1038,8 +1038,8 @@
     "effect": "",
     "value": 0,
     "art": "Kamikaze.webp",
-    "atk": 6,
-    "hp": 6,
+    "atk": 5,
+    "hp": 5,
     "tags": [],
     "spellPower": 0,
     "passive": "DamageOnDiscard",
@@ -1100,7 +1100,7 @@
   },
   {
     "name": "Lazarus",
-    "desc": "Wraca w następnej turze po śmierci na planszę. (Jednorazowe)",
+    "desc": "",
     "rarity": 2,
     "cost": {
       "T": 0,
@@ -1303,8 +1303,8 @@
     "effect": "",
     "value": 0,
     "art": "Wampir.webp",
-    "atk": 3,
-    "hp": 3,
+    "atk": 4,
+    "hp": 4,
     "tags": [],
     "spellPower": 0,
     "passive": "Lifesteal",
@@ -1357,16 +1357,16 @@
   },
   {
     "name": "Devszyr",
-    "desc": "Daje -2/-2 wszystkim Legendom",
+    "desc": "Usuń WSZYSTKIE legendy z talii, ręki i planszy obu graczy",
     "rarity": 1,
     "cost": {
-      "T": 0,
-      "W": 0,
-      "B": 0,
-      "D": 2
+      "T": 2,
+      "W": 3,
+      "B": 1,
+      "D": 0
     },
     "type": "spell",
-    "effect": "DebuffLegends",
+    "effect": "PurgeLegends",
     "value": 0,
     "art": "Piosenka_Devszyr.webp"
   },
@@ -1527,6 +1527,30 @@
     "effect": "SetEnemyHealthTo",
     "value": 6,
     "art": "Wyrok_Kunnera.svg",
+    "atk": 0,
+    "hp": 0,
+    "tags": [],
+    "spellPower": 0,
+    "passive": "",
+    "charge": false,
+    "turnsUntilDeath": -1,
+    "token": true,
+    "hidden": true
+  },
+  {
+    "name": "Zamiana talii",
+    "desc": "Zamień swoją talię z talią przeciwnika. Zużywa całą turę rzucającego",
+    "rarity": 3,
+    "cost": {
+      "T": 0,
+      "W": 0,
+      "B": 0,
+      "D": 1
+    },
+    "type": "spell",
+    "effect": "SwapDecks",
+    "value": 0,
+    "art": "Zamiana_talii.svg",
     "atk": 0,
     "hp": 0,
     "tags": [],

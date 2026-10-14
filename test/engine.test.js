@@ -42,7 +42,7 @@ test('wszystkie efekty kart są obsługiwane', () => {
   const known = ['', 'HealFriendlyHero', 'DamageEnemyHero', 'SummonGirlfriends', 'DestroyAllMinionsDiscardHand', 'SetHealthTo30', 'ResurrectFriendlyUnit', 'ChanceBuff', 'DrawCards', 'DrawNamedCard', 'DrawTwoWithTag', 'DamageAllExceptProgrammers', 'ReturnToHandRandom', 'ChargeDiscardTwo', 'BuffIfProgrammerInHand', 'AddRandomSpellToHand', 'OpponentDiscardsCard', 'DrawCardWithTag', 'DrawSpecificCard', 'Draw5Spells', 'BuffIfProgrammerInHandHealth', 'FreezeAllEnemies', 'DamageRandomEnemy3Times', 'DestroyTargetMinion', 'SummonRandomUnit', 'DamageAllEnemies', 'DamageAndDiscard', 'IncreaseBydgoszczMana', 'DiscardCardFromHand', 'ReturnFriendlyToHand', 'BuffIfProgrammerInHandBoth', 'BuffPerCardInHand', 'SetEnemyHealthToYours', 'DamageSelfAndDraw', 'DamageBothHeroes',
     'BuffAndTauntIfProgrammerInHand', 'BuffAndChargeIfProgrammerInHand', 'ManaCrystal', 'TripleDamage3Turns', 'BothPlayersDraw2', 'DestroyAndOpponentDraws',
     'SummonScalingSnake', 'SedoroChoice', 'DiscardAndDraw2', 'BuffGraveyard', 'AstarionChoice', 'BuffIfEnemyHasXayoo', 'SummonTwoCopies', 'HalveAttack3Random',
-    'SummonDragonsForProgrammers', 'DebuffLegends', 'DestroyTargetGirl', 'LastPedalChoice', 'DamageGrass', 'OlafChoice', 'SetEnemyHealthTo'];
+    'SummonDragonsForProgrammers', 'DebuffLegends', 'DestroyTargetGirl', 'LastPedalChoice', 'DamageGrass', 'OlafChoice', 'SetEnemyHealthTo', 'MillOpponent', 'PurgeLegends', 'SwapDecks'];
   const src = require('fs').readFileSync(require.resolve('../server/engine'), 'utf8');
   for (const c of CARDS) {
     assert(known.includes(c.effect || ''), 'brak efektu ' + c.effect);
@@ -398,48 +398,112 @@ test('Diss na Szymona bije wybraną jednostkę', () => {
   assert.strictEqual(u.hp, 3); assert.strictEqual(g.players[o].hp, 20);
 });
 
-test('Mordekaiser działa jak dodanie kryształu many (wybór miasta, bez zużycia rozbudowy)', () => {
+test('Mordekaiser rozbudowuje Bydgoszcz bez zużycia rozbudowy', () => {
   const g = newGame(); const i = g.current; const p = g.players[i];
   p.mana.T = { lvl: 2, prog: 0, used: 0 }; p.mana.W = { lvl: 2, prog: 0, used: 0 }; p.mana.B = { lvl: 0, prog: 0, used: 0 };
-  const m = put(g, i, 'Mordekaiser');
-  g.action(i, { type: 'play', uid: m.uid });
-  assert.strictEqual(g.pending.type, 'choice');
-  const k = g.pending.options.findIndex(o => o.key === 'B');
-  g.action(i, { type: 'choiceIndex', index: k });
+  g.action(i, { type: 'play', uid: put(g, i, 'Mordekaiser').uid });
+  assert.strictEqual(g.pending, null, 'bez okienka wyboru');
   assert.strictEqual(p.mana.B.lvl, 1); assert.strictEqual(g.available(p, 'B'), 1);
   assert.strictEqual(p.manaActionUsed, false);
   g.action(i, { type: 'mana', city: 'B' });
   assert.strictEqual(p.mana.B.lvl, 2);
-  // drugi poziom wymaga 2 postępów – Mordekaiser daje jeden
-  p.mana.T = { lvl: 2, prog: 0, used: 0 }; p.mana.W = { lvl: 2, prog: 0, used: 0 }; p.mana.B.used = 0;
+  p.mana.T = { lvl: 2, prog: 0, used: 0 }; p.mana.W = { lvl: 2, prog: 0, used: 0 };
   g.action(i, { type: 'play', uid: put(g, i, 'Mordekaiser').uid });
-  g.action(i, { type: 'choiceIndex', index: g.pending.options.findIndex(o => o.key === 'T') });
-  assert.strictEqual(p.mana.T.lvl, 2); assert.strictEqual(p.mana.T.prog, 1);
+  assert.strictEqual(p.mana.B.lvl, 2); assert.strictEqual(p.mana.B.prog, 1);
 });
 
-test('Widz z devszyr +1/+1 i Szarża, Alternatywka +1 ataku i Prowokacja (z informatykiem w ręce)', () => {
-  const g = newGame(); const i = g.current; giveMana(g, i);
-  g.players[i].hand.push(g.newCard('Ksawery'));
-  const w = put(g, i, 'Widz z devszyr'); g.action(i, { type: 'play', uid: w.uid });
-  const wu = g.players[i].board.find(u => u.uid === w.uid);
-  assert.strictEqual(wu.atk, 2); assert.strictEqual(wu.hp, 2); assert.strictEqual(wu.attacksLeft, 1);
-  const a = put(g, i, 'Alternatywka'); g.action(i, { type: 'play', uid: a.uid });
-  const au = g.players[i].board.find(u => u.uid === a.uid);
-  assert.strictEqual(au.atk, 2); assert.strictEqual(au.hp, 3); assert(au.taunt);
+test('Karo As (1 Tczew) odrzuca kartę z wierzchu talii przeciwnika', () => {
+  const g = newGame(); const i = g.current, o = 1 - i;
+  assert.deepStrictEqual(BY_NAME['Karo As'].cost, { T: 1, W: 0, B: 0, D: 0 });
+  giveMana(g, i);
+  g.players[o].deck.unshift(g.newCard('67'));
+  const n = g.players[o].deck.length, h = g.players[o].hand.length;
+  g.action(i, { type: 'play', uid: put(g, i, 'Karo As').uid });
+  assert.strictEqual(g.players[o].deck.length, n - 1);
+  assert.strictEqual(g.players[o].hand.length, h);
+  assert(g.players[o].grave.includes('67') && g.players[o].dead.includes('67'));
 });
 
-test('jednostkę można postawić w wybranym miejscu (np. obok Rowera)', () => {
-  const g = newGame(); const i = g.current; giveMana(g, i); const p = g.players[i];
-  const a = g.summon(i, g.newCard('Kubba'), { battlecry: false });
-  const b = g.summon(i, g.newCard('Ramus'), { battlecry: false });
-  const r = put(g, i, 'Rower');
-  g.action(i, { type: 'play', uid: r.uid, pos: 1 });
-  assert.deepStrictEqual(p.board.map(u => u.name), ['Kubba', 'Rower', 'Ramus']);
-  assert.strictEqual(g.attackOf(i, a), 4); assert.strictEqual(g.attackOf(i, b), 4);
-  const k = put(g, i, 'Kubba'); g.action(i, { type: 'play', uid: k.uid, pos: 0 });
-  assert.strictEqual(p.board[0].uid, k.uid);
-  const z = put(g, i, 'Ramus'); g.action(i, { type: 'play', uid: z.uid, pos: 99 });
-  assert.strictEqual(p.board[p.board.length - 1].uid, z.uid, 'zła pozycja = na koniec');
+test('Devszyr usuwa wszystkie legendy z talii, ręki i planszy obu graczy', () => {
+  const g = newGame(); const i = g.current, o = 1 - i; giveMana(g, i);
+  assert.deepStrictEqual(BY_NAME.Devszyr.cost, { T: 2, W: 3, B: 1, D: 0 });
+  g.summon(i, g.newCard('Massyn'), { battlecry: false }); g.summon(o, g.newCard('Olaf'), { battlecry: false });
+  g.summon(o, g.newCard('67'), { battlecry: false });
+  g.players[o].hand.push(g.newCard('Jędrek')); g.players[i].deck.push(g.newCard('Xayoo')); g.players[o].deck.push(g.newCard('Tofame'));
+  g.action(i, { type: 'play', uid: put(g, i, 'Devszyr').uid });
+  const legend = c => BY_NAME[c.name].rarity === 3;
+  for (const P of g.players) { assert(!P.board.some(legend)); assert(!P.hand.some(legend)); assert(!P.deck.some(legend)); }
+  assert(g.players[o].board.some(u => u.name === '67'));
+});
+
+test('Lazarus po śmierci od razu wraca (bez opisu), ale nie może atakować; drugi raz już nie', () => {
+  const g = newGame(); const i = g.current, o = 1 - i;
+  assert.strictEqual(BY_NAME.Lazarus.desc, '');
+  const l = g.summon(i, g.newCard('Lazarus'), { battlecry: false });
+  g.summon(i, g.newCard('Kubba'), { battlecry: false });
+  l.attacksLeft = 1;
+  const big = g.summon(o, g.newCard('67'), { battlecry: false });
+  g.action(i, { type: 'attack', uid: l.uid, target: big.uid });
+  const back = g.players[i].board.find(u => u.name === 'Lazarus');
+  assert(back && back !== l, 'Lazarus wrócił');
+  assert.strictEqual(g.players[i].board.indexOf(back), 0, 'na to samo miejsce');
+  assert.throws(() => g.action(i, { type: 'attack', uid: back.uid, target: 'hero' }), GameError);
+  g.destroyUnit(i, back); g.sweep();
+  assert(!g.players[i].board.some(u => u.name === 'Lazarus'));
+});
+
+test('Wampir 4/4, Kamikaze 5/5', () => {
+  assert.strictEqual(BY_NAME.Wampir.atk, 4); assert.strictEqual(BY_NAME.Wampir.hp, 4);
+  assert.strictEqual(BY_NAME.Kamikaze.atk, 5); assert.strictEqual(BY_NAME.Kamikaze.hp, 5);
+});
+
+test('El Sahar: polegli stronnicy gracza przechodzą na jego stronę', () => {
+  const g = new Game('s', [{ userId: 'a', name: 'A', deck: randomDeck() }, { userId: 'bot', name: 'El Sahar', deck: randomDeck(), stealDeaths: true }]);
+  g.start(); g.action(0, { type: 'mulligan', uids: [] }); g.action(1, { type: 'mulligan', uids: [] });
+  const mine = g.summon(0, g.newCard('Kubba'), { battlecry: false });
+  const his = g.summon(1, g.newCard('Ramus'), { battlecry: false });
+  g.destroyUnit(0, mine); g.destroyUnit(1, his); g.sweep();
+  assert(g.players[1].board.some(u => u.name === 'Kubba'), 'Kubba po stronie El Sahara');
+  assert(!g.players[0].dead.includes('Kubba'));
+  assert(!g.players[0].board.some(u => u.name === 'Ramus'), 'jego jednostki nie przechodzą');
+});
+
+test('Maestro: każda karta kosztuje 1, także z cmentarza', () => {
+  const g = newGame(); g.flatCost = 1; const i = g.current; const p = g.players[i];
+  for (const c of ['T', 'W', 'B']) p.mana[c] = { lvl: 0, prog: 0, used: 0 };
+  p.mana.W.lvl = 1;
+  const big = put(g, i, '67');
+  assert.deepStrictEqual(g.effectiveCost(i, big), { T: 0, W: 0, B: 0, D: 1 });
+  g.action(i, { type: 'play', uid: big.uid });
+  assert(p.board.some(u => u.uid === big.uid));
+  assert.deepStrictEqual(g.graveCost(), { T: 0, W: 0, B: 0, D: 1 });
+});
+
+test('Ciota: Zamiana talii w pierwszej turze bota', () => {
+  const junk = Array(20).fill('Mikrocypek'), good = Array(20).fill('67');
+  const g = new Game('c', [{ userId: 'a', name: 'A', deck: good }, { userId: 'bot', name: 'Ciota', deck: junk, openingSpell: 'Zamiana talii' }]);
+  g.current = 0; g.start(); g.action(0, { type: 'mulligan', uids: [] }); g.action(1, { type: 'mulligan', uids: [] });
+  assert(g.players[0].hand.every(c => c.name === '67'));
+  g.action(0, { type: 'end' });
+  assert(g.players[0].deck.every(c => c.name === 'Mikrocypek'), 'gracz ma teraz talię śmieci');
+  assert(g.players[1].deck.every(c => c.name === '67'));
+  assert(!g.view(1).me.hand.some(c => c.playable), 'w tej turze bot nic więcej nie zagra');
+});
+
+test('26gang tworzy nową losową piosenkę z puli wszystkich piosenek', () => {
+  const seen = new Set();
+  for (let k = 0; k < 60; k++) {
+    const g = newGame(); const i = g.current; giveMana(g, i); const p = g.players[i];
+    p.deck = [g.newCard('67'), g.newCard('Kubba')];
+    const gang = put(g, i, '26gang'); const h = p.hand.length;
+    g.action(i, { type: 'play', uid: gang.uid });
+    assert.strictEqual(p.deck.length, 2, 'talia bez zmian');
+    assert.strictEqual(p.hand.length, h);
+    const c = p.hand[p.hand.length - 1], d = BY_NAME[c.name];
+    assert(d.type === 'spell' && !d.token && !d.hidden);
+    seen.add(c.name);
+  }
+  assert(seen.size > 5, 'piosenki są losowe');
 });
 
 test('Ostatni pedał: +3/+3 tylko dla wybranej jednostki albo zniszczenie wybranego Lewca', () => {

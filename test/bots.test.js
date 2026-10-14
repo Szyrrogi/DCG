@@ -73,8 +73,9 @@ async function playBot(c, deckId, bot) {
   c.view = null; c.inbox.length = 0;
   c.send({ t: 'startBot', bot, deckId });
   const first = await c.wait(m => m.t === 'game');
-  assert.strictEqual(first.view.currentSeat, first.view.mySeat, 'z botem zawsze zaczyna gracz');
-  assert.strictEqual(first.view.me.hand.length, 3);
+  const botFirst = bot === 'maestro';
+  assert.strictEqual(first.view.currentSeat === first.view.mySeat, !botFirst, 'z botem zaczyna gracz (poza Maestro)');
+  assert.strictEqual(first.view.me.hand.length, botFirst ? 4 : 3);
   c.send({ t: 'act', action: { type: 'mulligan', uids: [] } });
   let guard = 0, sawBossEvent = false;
   for (;;) {
@@ -102,7 +103,7 @@ async function playBot(c, deckId, bot) {
     const c = await client('olaf');
     c.send({ t: 'login', username: 'olaf', password: 'haslo' });
     await c.wait(m => m.t === 'auth');
-    assert.deepStrictEqual(c.bots.map(b => b.id), ['casborg', 'kunner', 'tczew', 'trener']);
+    assert.deepStrictEqual(c.bots.map(b => b.id), ['casborg', 'kunner', 'tczew', 'ciota', 'maestro', 'elsahar', 'trener']);
     assert(c.cards.find(x => x.name === 'Wyrok Kunnera').hidden, 'karta Kunnera musi być ukryta');
     const deckId = await buildDeck(c);
     console.log('✓ lista przeciwników i talia gotowe');
@@ -118,7 +119,7 @@ async function playBot(c, deckId, bot) {
     assert.strictEqual(c.me.gold, gold0, 'draft musi być darmowy');
     console.log('✓ draft jest darmowy');
 
-    for (const bot of ['casborg', 'kunner', 'tczew', 'trener']) {
+    for (const bot of ['casborg', 'kunner', 'tczew', 'ciota', 'maestro', 'elsahar', 'trener']) {
       const before = c.me.gold, prev = (c.me.adventure[bot] || { wins: 0 }).wins;
       const { over, sawBossEvent } = await playBot(c, deckId, bot);
       assert(sawBossEvent, 'brak zdarzeń bota w dzienniku');

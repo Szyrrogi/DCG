@@ -76,6 +76,7 @@ const SFX = (() => {
     craft: () => { [784, 988, 1175, 1568].forEach((f, i) => tone(f, 0.35, { vol: 0.1, at: i * 0.06 })); noise(0.5, { freq: 7000, vol: 0.05 }); },
     dust: () => { noise(0.35, { freq: 3000, sweep: 0.3, vol: 0.2 }); tone(220, 0.2, { type: 'triangle', vol: 0.1, slide: 0.5 }); },
     error: () => tone(160, 0.15, { type: 'square', vol: 0.06 }),
+    emote: () => { tone(660, 0.09, { type: 'triangle', vol: 0.12 }); tone(990, 0.12, { type: 'triangle', vol: 0.1, at: 0.07 }); },
   };
   return {
     play(name) { if (muted) return; try { if (ensure() && lib[name]) lib[name](); } catch { } },
@@ -147,6 +148,7 @@ function onMsg(m) {
       S.token = m.token; store.set('dcg_token', m.token);
       S.cards = m.cards; S.byName = Object.fromEntries(m.cards.map(c => [c.name, c]));
       S.bots = m.bots || [];
+      S.emotes = m.emotes || S.emotes;
       setMe(m.me);
       if (!S.view || S.view.over) show('hub');
       showRegister(false); $('#register-form').reset(); S.regAvatar = null;
@@ -173,6 +175,7 @@ function onMsg(m) {
     case 'toast': toast(m.msg); break;
     case 'error': toast(m.msg, true); break;
     case 'spectateEnd': onSpectateEnd(m); break;
+    case 'emote': if (S.view && (!m.game || m.game === S.view.id)) showEmote(m.seat, m.text); break;
     case 'kicked': store.set('dcg_token', null); S.me = null; S.ws = null; show('login'); $('#login-error').textContent = m.msg; break;
   }
 }
@@ -801,13 +804,14 @@ function onGame(v) {
 async function processView(v) {
   const first = !S.view || S.view.id !== v.id;
   const prev = first ? null : S.view;
-  if (first) { S.sel = null; S.mullSel = new Set(); S.mullSent = false; S.gameOverShown = false; $('#opp-left').classList.add('hidden'); closeModal(); $('.battle').classList.remove('defeat'); }
+  if (first) { S.sel = null; S.mullSel = new Set(); S.mullSent = false; S.gameOverShown = false; $('#opp-left').classList.add('hidden'); closeModal(); $('.battle').classList.remove('defeat'); $('#emote-wheel').classList.add('hidden'); $$('.hero').forEach(h => h.classList.remove('cracking', 'exploded')); }
   show('game');
   const fast = S.queued > 2;
   if (prev && !fast) { try { await animateBefore(v, prev); } catch (e) { console.error('animacja:', e); } }
   S.prevView = prev; S.view = v;
   try { renderGame(); } catch (e) { console.error('render:', e); }
   try { animateAfter(v, prev, first, fast); } catch (e) { console.error('animacja:', e); }
+  if (first && v.phase === 'mulligan' && !v.spectator) showVsIntro(v);
   if (!fast) await sleep(120);
 }
 
@@ -816,47 +820,163 @@ function fxTarget(v, id) {
   if (id === 'hero' + (1 - v.mySeat)) return $('#hero-opp');
   return id ? document.querySelector(`.board [data-id="${id}"]`) : null;
 }
+// ================= animacje walki =================
+const FX_COL = { dmg: '#ff7a2f', heal: '#7dff8a', freeze: '#9fe0ff', buff: '#ffd75e', immune: '#ffe9a0', set: '#c48bff' };
+const seatName = (v, seat) => seat === v.mySeat ? v.me.name : v.opp.name;
+const heroOf = (v, seat) => seat === v.mySeat ? $('#hero-me') : $('#hero-opp');
+// fragment fx należący do danego zagrania (do następnego zagrania/ataku)
+function segmentAfter(fx, idx) {
+  const out = [];
+  for (let k = idx + 1; k < fx.length && fx[k].type !== 'play' && fx[k].type !== 'attack'; k++) out.push(fx[k]);
+  return out;
+}
+function effectTargets(v, seg, skipId) {
+  const out = [], seen = new Set();
+  for (const g of seg) {
+    if (!['dmg', 'heal', 'freeze', 'buff', 'immune'].includes(g.type) || !g.id || g.id === skipId || seen.has(g.id)) continue;
+    const el = fxTarget(v, g.id); if (!el || !el.isConnected) continue;
+    seen.add(g.id);
+    out.push({ el, type: g.type === 'heal' && !g.amount ? 'set' : g.type, amount: g.amount || 0 });
+  }
+  return out;
+}
+function projectile(from, to, color, { size = 34, dur = 380 } = {}) {
+  const d = document.createElement('div');
+  d.className = 'proj';
+  d.style.cssText = `left:${from.x}px;top:${from.y}px;--c:${color};width:${size}px;height:${size}px`;
+  document.body.appendChild(d);
+  const mx = (from.x + to.x) / 2 + (Math.random() - .5) * 120, my = Math.min(from.y, to.y) - 70 - Math.random() * 50;
+  const trail = setInterval(() => { const r = d.getBoundingClientRect(); burst(r.left + r.width / 2, r.top + r.height / 2, { n: 3, color, spread: 18, size: 9 }); }, 30);
+  return d.animate([
+    { transform: 'translate(-50%,-50%) scale(.5)' },
+    { transform: `translate(calc(-50% + ${mx - from.x}px), calc(-50% + ${my - from.y}px)) scale(1.15)`, offset: .5 },
+    { transform: `translate(calc(-50% + ${to.x - from.x}px), calc(-50% + ${to.y - from.y}px)) scale(.9)` },
+  ], { duration: dur, easing: 'cubic-bezier(.4,.1,.6,1)' }).finished.then(() => { clearInterval(trail); d.remove(); });
+}
+function ring(x, y, color, { size = 160, dur = 520, width = 6 } = {}) {
+  const d = document.createElement('div');
+  d.className = 'fx-ring';
+  d.style.cssText = `left:${x}px;top:${y}px;--c:${color};--w:${width}px;width:${size}px;height:${size}px`;
+  document.body.appendChild(d);
+  d.animate([{ transform: 'translate(-50%,-50%) scale(.1)', opacity: 1 }, { transform: 'translate(-50%,-50%) scale(1)', opacity: 0 }], { duration: dur, easing: 'cubic-bezier(.2,.7,.3,1)' }).onfinish = () => d.remove();
+}
+function rise(el, color, n = 10, sym = '') {
+  if (!el) return;
+  const r = el.getBoundingClientRect();
+  for (let k = 0; k < n; k++) {
+    const d = document.createElement('div');
+    d.className = 'fx-rise' + (sym ? ' sym' : '');
+    if (sym) d.textContent = sym;
+    d.style.cssText = `left:${r.left + Math.random() * r.width}px;top:${r.top + r.height * (.4 + Math.random() * .5)}px;--c:${color}`;
+    document.body.appendChild(d);
+    d.animate([{ transform: 'translate(-50%,0) scale(.6)', opacity: 0 }, { opacity: 1, offset: .2 }, { transform: `translate(-50%, -${50 + Math.random() * 50}px) scale(1)`, opacity: 0 }], { duration: 700 + Math.random() * 500, delay: k * 40, easing: 'ease-out' }).onfinish = () => d.remove();
+  }
+}
+function impact(t) {
+  const c = center(t.el), col = FX_COL[t.type] || '#fff';
+  burst(c.x, c.y, { n: t.type === 'dmg' ? 18 : 12, color: col, spread: t.type === 'dmg' ? 70 : 50, size: 6 });
+  ring(c.x, c.y, col, { size: 110, dur: 420, width: 4 });
+  if (t.type === 'dmg') { t.el.classList.remove('hit'); void t.el.offsetWidth; t.el.classList.add('hit'); if (t.amount >= 5) shake(); }
+  if (t.type === 'heal' || t.type === 'buff') rise(t.el, col, 8, t.type === 'heal' ? '+' : '▲');
+  if (t.type === 'freeze') burst(c.x, c.y, { n: 16, color: '#e6f6ff', spread: 60, size: 4 });
+}
+async function effectsFrom(v, targets, src, { fast = false } = {}) {
+  if (!targets.length) return;
+  const dmg = targets.filter(t => t.type === 'dmg');
+  if (dmg.length >= 3 || targets.length >= 4) {
+    // efekt obszarowy: fala uderzeniowa przez planszę
+    const b = $('.board-wrap').getBoundingClientRect();
+    ring(src.x, src.y, FX_COL[dmg.length ? 'dmg' : targets[0].type], { size: Math.max(b.width, b.height) * 1.6, dur: 650, width: 14 });
+    $('.board-wrap').classList.remove('aoe'); void $('.board-wrap').offsetWidth; $('.board-wrap').classList.add('aoe');
+    if (dmg.length) { SFX.play('bighit'); shake(); }
+    await sleep(fast ? 120 : 260);
+    targets.forEach(impact);
+    await sleep(fast ? 80 : 200);
+    return;
+  }
+  for (const t of targets.slice(0, 6)) {
+    await projectile(src, center(t.el), FX_COL[t.type], { dur: fast ? 220 : 380 });
+    SFX.play(t.type === 'dmg' ? 'hit' : t.type === 'freeze' ? 'freeze' : 'heal');
+    impact(t);
+  }
+}
+function legendFlash(name, who) {
+  const o = document.createElement('div');
+  o.className = 'legend-flash';
+  o.innerHTML = `<div class="rays"></div><div class="lf-inner"><div class="lbl">${who ? esc(who) + ' – ' : ''}LEGENDA!</div>${cardHtml(name)}</div>`;
+  document.body.appendChild(o);
+  SFX.play('legend');
+  const c = { x: innerWidth / 2, y: innerHeight / 2 };
+  burst(c.x, c.y, { n: 50, color: '#ffb400', spread: 260, size: 8 });
+  setTimeout(() => o.remove(), 1500);
+  return sleep(1150);
+}
 async function animateBefore(v, prev) {
   const fx = v.fx || [];
-  for (const f of fx.filter(f => f.type === 'play' && f.by === v.mySeat)) {
-    const card = prev.me.hand.find(c => c.name === f.name && !v.me.hand.some(h => h.uid === c.uid));
-    const el = card && document.querySelector(`#hand-me [data-uid="${card.uid}"]`);
-    if (!el) continue;
-    const from = center(el), to = center($('#board-me'));
-    const isSpell = S.byName[f.name].type === 'spell';
-    playCardAudio(f.name);
-    await el.animate([{ transform: 'none' }, { transform: `translate(${to.x - from.x}px, ${to.y - from.y - (isSpell ? 60 : 0)}px) scale(${isSpell ? 1.3 : 0.6})`, opacity: isSpell ? 0 : 0.3 }], { duration: 260, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'forwards' }).finished;
-    if (isSpell) burst(to.x, to.y - 60, { n: 22, color: '#b9a0ff', spread: 120 });
-  }
-  const attacks = fx.filter(f => f.type === 'attack');
-  for (const f of attacks) {
-    const a = document.querySelector(`.board [data-id="${f.from}"]`), t = fxTarget(v, f.to);
-    if (!a || !t) continue;
-    const p = center(a), q = center(t);
-    a.style.zIndex = 10;
-    const anim = a.animate([
-      { transform: 'none' },
-      { transform: `translate(${(p.x - q.x) * 0.12}px, ${(p.y - q.y) * 0.12}px) scale(1.08)`, offset: 0.25 },
-      { transform: `translate(${(q.x - p.x) * 0.82}px, ${(q.y - p.y) * 0.82}px) scale(1.12)`, offset: 0.55 },
-      { transform: 'none' },
-    ], { duration: 460, easing: 'ease-in-out' });
-    await sleep(250);
-    const big = fx.some(x => x.type === 'dmg' && x.id === f.to && x.amount >= 5);
-    SFX.play(big ? 'bighit' : 'hit');
-    burst(q.x, q.y, { n: 10, color: '#ffd27a', spread: 50, size: 5 });
-    if (big) shake();
-    await anim.finished; a.style.zIndex = '';
+  for (let idx = 0; idx < fx.length; idx++) {
+    const f = fx[idx];
+    if (f.type === 'play') {
+      const d = S.byName[f.name]; if (!d) continue;
+      const mine = f.by === v.mySeat && !v.spectator;
+      const isSpell = d.type === 'spell';
+      let src = center(heroOf(v, f.by));
+      playCardAudio(f.name);
+      if (mine) {
+        const card = prev.me.hand.find(c => c.name === f.name && !v.me.hand.some(h => h.uid === c.uid));
+        const el = card && document.querySelector(`#hand-me [data-uid="${card.uid}"]`);
+        if (el) {
+          const from = center(el), to = center($('#board-me'));
+          el.style.zIndex = 30;
+          await el.animate([{ transform: 'none' }, { transform: `translate(${(to.x - from.x) * .5}px, ${to.y - from.y - 140}px) scale(1.35) rotate(-3deg)`, offset: .55 }, { transform: `translate(${to.x - from.x}px, ${to.y - from.y - (isSpell ? 70 : 0)}px) scale(${isSpell ? 1.4 : 0.55})`, opacity: isSpell ? 0 : 0.2 }], { duration: 380, easing: 'cubic-bezier(.3,.7,.4,1)', fill: 'forwards' }).finished;
+          src = { x: to.x, y: to.y - 70 };
+          if (isSpell) { burst(src.x, src.y, { n: 26, color: '#b9a0ff', spread: 130 }); ring(src.x, src.y, '#b9a0ff', { size: 200 }); }
+        }
+      } else {
+        showPlayed(f.name, seatName(v, f.by), d.rarity === 3);
+        await sleep(d.rarity === 3 ? 1150 : 850);
+        if (isSpell) { const h = center(heroOf(v, f.by)); burst(h.x, h.y, { n: 20, color: '#b9a0ff', spread: 90 }); }
+      }
+      if (mine && d.rarity === 3) await legendFlash(f.name, '');
+      if (isSpell) await effectsFrom(v, effectTargets(v, segmentAfter(fx, idx)), src);
+    } else if (f.type === 'attack') {
+      const a = document.querySelector(`.board [data-id="${f.from}"]`), t = fxTarget(v, f.to);
+      if (!a || !t) continue;
+      const p = center(a), q = center(t);
+      a.style.zIndex = 10;
+      a.classList.add('lunging');
+      const anim = a.animate([
+        { transform: 'none' },
+        { transform: `translate(${(p.x - q.x) * 0.14}px, ${(p.y - q.y) * 0.14}px) scale(1.12) rotate(${p.x < q.x ? -6 : 6}deg)`, offset: 0.3 },
+        { transform: `translate(${(q.x - p.x) * 0.84}px, ${(q.y - p.y) * 0.84}px) scale(1.15)`, offset: 0.58 },
+        { transform: 'none' },
+      ], { duration: 520, easing: 'ease-in-out' });
+      await sleep(300);
+      const big = fx.some(x => x.type === 'dmg' && x.id === f.to && x.amount >= 5);
+      SFX.play(big ? 'bighit' : 'hit');
+      burst(q.x, q.y, { n: big ? 26 : 14, color: '#ffd27a', spread: big ? 90 : 55, size: 6 });
+      ring(q.x, q.y, '#ffd27a', { size: big ? 180 : 120, dur: 380, width: big ? 8 : 5 });
+      const star = document.createElement('div'); star.className = 'hit-star'; star.style.cssText = `left:${q.x}px;top:${q.y}px`; document.body.appendChild(star); setTimeout(() => star.remove(), 450);
+      t.classList.remove('hit'); void t.offsetWidth; t.classList.add('hit');
+      if (big) shake();
+      await anim.finished; a.style.zIndex = ''; a.classList.remove('lunging');
+    }
   }
   const dying = fx.filter(f => f.type === 'die').map(f => document.querySelector(`.board [data-id="${f.id}"]`)).filter(Boolean);
   if (!dying.length) return;
   for (const f of fx.filter(f => f.type === 'dmg')) { const el = fxTarget(v, f.id); if (el && dying.includes(el)) floatAt(el, '-' + f.amount, 'dmg'); }
   SFX.play('die');
   for (const el of dying) {
-    const c = center(el);
+    const c = center(el), r = el.getBoundingClientRect();
     el.classList.add('dying');
-    setTimeout(() => burst(c.x, c.y, { n: 16, color: '#9b8b7a', spread: 80, size: 6 }), 200);
+    // dusza ulatuje w górę
+    const g = document.createElement('div');
+    g.className = 'soul-fx';
+    g.style.cssText = `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;background-image:${getComputedStyle(el).backgroundImage}`;
+    document.body.appendChild(g);
+    g.animate([{ transform: 'translateY(0) scale(1)', opacity: .75 }, { transform: 'translateY(-90px) scale(1.15)', opacity: 0 }], { duration: 900, easing: 'ease-out' }).onfinish = () => g.remove();
+    setTimeout(() => { burst(c.x, c.y, { n: 22, color: '#9b8b7a', spread: 90, size: 6 }); burst(c.x, c.y, { n: 10, color: '#ff8a4a', spread: 50, size: 4 }); }, 200);
   }
-  await sleep(430);
+  await sleep(450);
 }
 
 function shake() {
@@ -873,16 +993,42 @@ function animateAfter(v, prev, first, fast) {
       if (!shown.has(f.id + ':' + fx.indexOf(f))) floatAt(el, '-' + f.amount, 'dmg');
       if (el.classList.contains('hero')) { el.classList.remove('hurt'); void el.offsetWidth; el.classList.add('hurt'); if (f.amount >= 5 && !fx.some(x => x.type === 'attack')) { shake(); SFX.play('bighit'); } }
     }
-    if (f.type === 'heal' && el) { if (f.amount > 0) floatAt(el, '+' + f.amount, 'heal'); el.classList.remove('healed'); void el.offsetWidth; el.classList.add('healed'); SFX.play('heal'); }
-    if (f.type === 'summon') { const u = document.querySelector(`.board [data-id="${f.uid}"]`); if (u) { u.classList.add('enter'); if (!fx.some(x => x.type === 'play' && x.by === v.mySeat)) SFX.play('card'); } }
-    if (f.type === 'freeze' && el) { el.classList.add('freezing'); }
-    if (f.type === 'immune' && el) { floatAt(el, '🛡', 'heal'); }
-    if (f.type === 'buff' && el) { el.classList.remove('buffed'); void el.offsetWidth; el.classList.add('buffed'); }
-    if (f.type === 'play' && f.by !== v.mySeat) { showPlayed(f.name, v.opp.name); playCardAudio(f.name); }
+    if (f.type === 'heal' && el) { if (f.amount > 0) { floatAt(el, '+' + f.amount, 'heal'); rise(el, '#7dff8a', 10, '+'); } else rise(el, '#c48bff', 12, '♥'); el.classList.remove('healed'); void el.offsetWidth; el.classList.add('healed'); SFX.play('heal'); }
+    if (f.type === 'summon') {
+      const u = document.querySelector(`.board [data-id="${f.uid}"]`);
+      if (u) {
+        u.classList.add('enter');
+        if (!fx.some(x => x.type === 'play' && x.by === v.mySeat)) SFX.play('card');
+        const c = center(u), d = S.byName[u.dataset.name] || {};
+        setTimeout(() => {
+          ring(c.x, c.y + u.offsetHeight * .35, d.rarity === 3 ? '#ffb400' : 'rgba(230,210,170,.9)', { size: d.rarity === 3 ? 260 : 150, dur: 560, width: d.rarity === 3 ? 10 : 5 });
+          burst(c.x, c.y + u.offsetHeight * .4, { n: 12, color: '#bfa782', spread: 60, size: 5 });
+          if (d.rarity === 3) { shake(); burst(c.x, c.y, { n: 30, color: '#ffb400', spread: 120, size: 7 }); }
+          if (u.classList.contains('taunt')) { u.classList.add('shield-flash'); setTimeout(() => u.classList.remove('shield-flash'), 900); }
+        }, 260);
+      }
+    }
+    if (f.type === 'freeze' && el) { el.classList.add('freezing'); const c = center(el); burst(c.x, c.y, { n: 14, color: '#d8f2ff', spread: 55, size: 4 }); }
+    if (f.type === 'immune' && el) { floatAt(el, '🛡', 'heal'); ring(center(el).x, center(el).y, '#ffe9a0', { size: 160 }); }
+    if (f.type === 'buff' && el) { el.classList.remove('buffed'); void el.offsetWidth; el.classList.add('buffed'); rise(el, '#ffd75e', 8, '▲'); }
+    if (f.type === 'dmg' && el && el.isConnected && el.id === 'hero-me' && f.amount >= 4) { const vg = $('#vignette'); vg.classList.remove('show'); void vg.offsetWidth; vg.classList.add('show'); }
+    if (f.type === 'mana' && f.by === v.mySeat) { const col = $(`#mana-me .mana-col[data-c="${f.city}"]`); if (col) { const c = center(col); burst(c.x, c.y, { n: 16, color: f.city === 'T' ? '#7cc8ff' : f.city === 'W' ? '#ffd75e' : '#ff8a6a', spread: 60, size: 5 }); } }
+    if (f.type === 'play' && f.by !== v.mySeat && (fast || !prev) && !first) { showPlayed(f.name, seatName(v, f.by)); playCardAudio(f.name); }
     if (f.type === 'burn' && f.by === v.mySeat) toast(`Pełna ręka – ${f.name} spala się!`, true);
     if (f.type === 'discard') showDiscardAnim(f.by, f.name, v.mySeat);
   }
   if (fx.some(f => f.type === 'freeze')) SFX.play('freeze');
+  // okrzyki bojowe: pociski od nowej jednostki do celów, które przeżyły
+  if (!fast && prev) fx.forEach((f, idx) => {
+    if (f.type !== 'play' || !S.byName[f.name] || S.byName[f.name].type !== 'unit') return;
+    const seg = segmentAfter(fx, idx), sm = seg.find(g => g.type === 'summon');
+    const u = sm && document.querySelector(`.board [data-id="${sm.uid}"]`);
+    if (!u) return;
+    const targets = effectTargets(v, seg, sm.uid);
+    if (!targets.length) return;
+    u.classList.add('battlecry');
+    setTimeout(() => { u.classList.remove('battlecry'); effectsFrom(v, targets.filter(t => t.el.isConnected), center(u), { fast: true }); }, 420);
+  });
 
   const oldUids = new Set(prev ? prev.me.hand.map(c => c.uid) : []);
   const newCards = $$('#hand-me .card').filter(el => !oldUids.has(el.dataset.uid));
@@ -1097,6 +1243,7 @@ function renderGame() {
     el.onclick = e => { e.stopPropagation(); onEnemyClick(el.dataset.id); };
   });
   $('#hero-opp').onclick = e => { e.stopPropagation(); onEnemyClick('hero'); };
+  $('#hero-me').onclick = e => { e.stopPropagation(); if (pendingTarget(v) || (S.sel && S.sel.kind !== 'preview')) return; toggleEmoteWheel(); };
   updateHint();
 }
 
@@ -1391,19 +1538,48 @@ function floatAt(el, text, cls) {
   setTimeout(() => f.remove(), 1200);
   el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit');
 }
-function showPlayed(name, who) {
+function showPlayed(name, who, legend = false) {
   if (!S.byName[name]) return;
   const p = $('#played');
-  p.innerHTML = `<div class="inner"><div class="lbl">${esc(who)} zagrywa</div>${cardHtml(name)}</div>`;
+  const verb = S.byName[name].type === 'spell' ? 'rzuca' : 'zagrywa';
+  p.innerHTML = `${legend ? '<div class="rays"></div>' : ''}<div class="inner ${legend ? 'legend' : ''}"><div class="lbl">${esc(who)} ${verb}${legend ? ' <b class="gold-t">LEGENDĘ!</b>' : ''}</div>${cardHtml(name)}</div>`;
+  p.classList.toggle('legend', legend);
   p.classList.remove('hidden');
+  if (legend) { SFX.play('legend'); burst(innerWidth / 2, innerHeight / 2, { n: 44, color: '#ffb400', spread: 240, size: 8 }); }
   clearTimeout(showPlayed.t);
-  showPlayed.t = setTimeout(() => p.classList.add('hidden'), 1800);
+  showPlayed.t = setTimeout(() => p.classList.add('hidden'), legend ? 2100 : 1800);
+}
+
+// ekran „VS” na początku meczu
+function showVsIntro(v) {
+  const o = document.createElement('div');
+  o.className = 'vs-intro';
+  const boss = (S.bots || []).find(b => b.name === v.opp.name && S.lastBot && S.lastBot.bot === b.id);
+  o.innerHTML = `<div class="vs-side me">${avImg(v.me.avatar)}<b>${esc(v.me.name)}</b></div>
+    <div class="vs-mid"><div class="vs">VS</div>${boss ? `<div class="vs-rule">${esc(boss.rule)}</div>` : ''}</div>
+    <div class="vs-side opp">${avImg(v.opp.avatar)}<b>${esc(v.opp.name)}</b></div>`;
+  document.body.appendChild(o);
+  SFX.play('turn');
+  setTimeout(() => { SFX.play('bighit'); burst(innerWidth / 2, innerHeight / 2, { n: 40, color: '#f2c14e', spread: 220, size: 8 }); }, 520);
+  setTimeout(() => o.classList.add('out'), boss ? 2600 : 1900);
+  setTimeout(() => o.remove(), boss ? 3100 : 2400);
+}
+
+// bohater, który przegrał, pęka i wybucha
+function heroExplode(el) {
+  if (!el) return;
+  const c = center(el);
+  el.classList.add('cracking');
+  SFX.play('bighit');
+  for (let k = 0; k < 5; k++) setTimeout(() => { burst(c.x + (Math.random() - .5) * 60, c.y + (Math.random() - .5) * 60, { n: 16, color: k % 2 ? '#ff6b3a' : '#ffd27a', spread: 90, size: 7 }); shake(); }, 150 + k * 140);
+  setTimeout(() => { ring(c.x, c.y, '#ff6b3a', { size: 420, dur: 700, width: 16 }); burst(c.x, c.y, { n: 70, color: '#ffb400', spread: 260, size: 9 }); SFX.play('die'); el.classList.add('exploded'); }, 900);
 }
 
 function onGameOver(m) {
   $('#opp-left').classList.add('hidden');
   const win = m.result === 'win';
   const reason = m.reason === 'concede' ? (win ? `${m.opponent} się poddał(a).` : 'Poddałeś się.') : m.reason === 'forfeit' ? (win ? 'Walkower – przeciwnik opuścił grę.' : 'Przegrana walkowerem.') : '';
+  if (m.reason !== 'forfeit') heroExplode(win ? $('#hero-opp') : $('#hero-me'));
   setTimeout(() => {
     let reward = '';
     if (m.bot) {
@@ -1421,7 +1597,7 @@ function onGameOver(m) {
     box.querySelector('#go-lobby').onclick = () => { closeModal(); S.view = null; show('hub'); setTab(m.bot ? 'adventure' : 'play'); };
     const ag = box.querySelector('#go-again');
     if (ag) ag.onclick = () => { closeModal(); S.view = null; send({ t: 'startBot', bot: S.lastBot.bot, deckId: S.lastBot.deckId }); };
-  }, 900);
+  }, m.reason === 'forfeit' ? 900 : 1700);
 }
 
 function confetti() {
@@ -1575,6 +1751,72 @@ function renderAdventure() {
   });
 }
 if ($('#adv-deck')) $('#adv-deck').onchange = e => store.set('dcg_deck', e.target.value);
+
+// ================= emotki =================
+S.emotes = ['Witaj', 'Dobre zagranie', 'hihihi-ha', 'Missclik', 'Ez', 'O ty chuju'];
+S.squelch = false;
+function toggleEmoteWheel(force) {
+  const w = $('#emote-wheel');
+  const open = force != null ? force : w.classList.contains('hidden');
+  if (!open || !S.view || S.view.spectator || S.view.over) { w.classList.add('hidden'); return; }
+  const h = $('#hero-me').getBoundingClientRect();
+  w.innerHTML = `<div class="ew-list">${S.emotes.map((t, k) => `<button type="button" class="ew-btn" data-k="${k}" style="--d:${k * 30}ms">${esc(t)}</button>`).join('')}
+    <form class="ew-custom" style="--d:${S.emotes.length * 30}ms"><input maxlength="40" placeholder="Własna emotka…" autocomplete="off"><button class="btn gold small" type="submit">➤</button></form>
+    <button type="button" class="ew-btn ew-mute" style="--d:${(S.emotes.length + 1) * 30}ms">${S.squelch ? '🔊 Odcisz przeciwnika' : '🔇 Wycisz przeciwnika'}</button></div>`;
+  w.classList.remove('hidden');
+  const left = Math.min(h.right + 10, innerWidth - w.offsetWidth - 8);
+  const top = Math.max(8, Math.min(h.bottom - w.offsetHeight, innerHeight - w.offsetHeight - 8));
+  w.style.left = left + 'px'; w.style.top = top + 'px';
+  w.querySelectorAll('[data-k]').forEach(b => b.onclick = e => { e.stopPropagation(); sendEmote(S.emotes[+b.dataset.k]); });
+  w.querySelector('.ew-mute').onclick = e => { e.stopPropagation(); S.squelch = !S.squelch; toast(S.squelch ? 'Emotki przeciwnika wyciszone.' : 'Emotki przeciwnika włączone.'); toggleEmoteWheel(false); };
+  const f = w.querySelector('.ew-custom');
+  f.onclick = e => e.stopPropagation();
+  f.onsubmit = e => { e.preventDefault(); const t = f.querySelector('input').value.trim(); if (t) sendEmote(t); };
+}
+function sendEmote(text) {
+  const now = Date.now();
+  if (now - (S.emoteAt || 0) < 1500) { toast('Chwila, nie tak szybko 🙂'); return; }
+  S.emoteAt = now;
+  send({ t: 'emote', text });
+  toggleEmoteWheel(false);
+}
+function showEmote(seat, text) {
+  const v = S.view; if (!v || $('#scr-game').classList.contains('hidden')) return;
+  const mine = seat === v.mySeat;
+  if (!mine && S.squelch && !v.spectator) return;
+  const hero = mine ? $('#hero-me') : $('#hero-opp');
+  const old = document.querySelector(`.emote-bubble[data-side="${mine ? 'me' : 'opp'}"]`); if (old) old.remove();
+  const b = document.createElement('div');
+  b.className = 'emote-bubble ' + (mine ? 'me' : 'opp');
+  b.dataset.side = mine ? 'me' : 'opp';
+  b.textContent = text;
+  document.body.appendChild(b);
+  const r = hero.getBoundingClientRect();
+  const narrow = innerWidth <= 720 && innerHeight > innerWidth;
+  b.style.left = Math.min(narrow ? r.left + r.width * .6 : r.right + 14, innerWidth - b.offsetWidth - 8) + 'px';
+  b.style.top = (narrow ? (mine ? r.top - b.offsetHeight - 10 : r.bottom + 10) : r.top + r.height * .15) + 'px';
+  SFX.play('emote');
+  hero.classList.remove('talking'); void hero.offsetWidth; hero.classList.add('talking');
+  setTimeout(() => b.classList.add('out'), 3200);
+  setTimeout(() => b.remove(), 3600);
+}
+$('#btn-emote').onclick = e => { e.stopPropagation(); toggleEmoteWheel(); };
+document.addEventListener('click', e => { if (!e.target.closest('#emote-wheel')) $('#emote-wheel').classList.add('hidden'); });
+
+// ================= pochylenie kart pod kursorem (efekt 3D) =================
+if (!TOUCH) {
+  document.addEventListener('pointermove', e => {
+    const c = e.target.closest && e.target.closest('.hand .card, .card-grid .card, .mull-card .card, .grave-grid .card, .flip.open .card, .craft-card .card');
+    if (S.tiltEl && S.tiltEl !== c) { S.tiltEl.style.removeProperty('--rx'); S.tiltEl.style.removeProperty('--ry'); S.tiltEl.style.removeProperty('--mx'); S.tiltEl.classList.remove('tilting'); }
+    S.tiltEl = c;
+    if (!c) return;
+    const r = c.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+    c.classList.add('tilting');
+    c.style.setProperty('--ry', ((x - .5) * 18).toFixed(1) + 'deg');
+    c.style.setProperty('--rx', ((.5 - y) * 14).toFixed(1) + 'deg');
+    c.style.setProperty('--mx', (x * 100).toFixed(0) + '%');
+  }, { passive: true });
+}
 
 // ================= start =================
 renderLoginUsers();

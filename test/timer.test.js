@@ -52,7 +52,7 @@ async function buildDeck(c) {
 }
 
 (async () => {
-  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'index.js')], { env: { ...process.env, PORT, DATA_FILE, DATABASE_URL: '', TURN_LIMIT_MS: '1200' }, stdio: ['ignore', 'pipe', 'inherit'] });
+  const srv = spawn(process.execPath, [path.join(__dirname, '..', 'server', 'index.js')], { env: { ...process.env, PORT, DATA_FILE, DATABASE_URL: '', TURN_LIMIT_MS: '4000' }, stdio: ['ignore', 'pipe', 'inherit'] });
   await new Promise(r => srv.stdout.on('data', d => { if (String(d).includes('działa')) r(); }));
   try {
     const a = await client('juli'), b = await client('olaf');
@@ -64,13 +64,25 @@ async function buildDeck(c) {
     await a.wait(m => m.t === 'game'); await b.wait(m => m.t === 'game');
     a.send({ t: 'act', action: { type: 'mulligan', uids: [] } }); b.send({ t: 'act', action: { type: 'mulligan', uids: [] } });
     const v0 = (await a.wait(m => m.t === 'game' && m.view.phase === 'play')).view;
-    assert(v0.turnLeftMs > 0 && v0.turnLeftMs <= 1200, 'widok podaje pozostały czas tury');
-    assert.strictEqual(v0.turnLimitMs, 1200);
+    assert(v0.turnLeftMs > 0 && v0.turnLeftMs <= 4000, 'widok podaje pozostały czas tury');
+    assert.strictEqual(v0.turnLimitMs, 4000);
+    // emotki: gotowe i własne (przycięte do 40 znaków), limit częstotliwości
+    a.send({ t: 'emote', text: 'O ty chuju' });
+    const e1 = await b.wait(m => m.t === 'emote');
+    assert.strictEqual(e1.text, 'O ty chuju'); assert.strictEqual(e1.seat, v0.mySeat);
+    a.send({ t: 'emote', text: 'spam' });
+    await new Promise(r => setTimeout(r, 300));
+    assert(!b.inbox.some(m => m.t === 'emote' && m.text === 'spam'), 'limit emotek');
+    await new Promise(r => setTimeout(r, 1300));
+    b.send({ t: 'emote', text: '  <b>' + 'x'.repeat(80) + '  ' });
+    const e2 = await a.wait(m => m.t === 'emote');
+    assert(e2.text.length <= 40 && !e2.text.includes('<'), 'własna emotka oczyszczona');
+    console.log('✓ emotki trafiają do przeciwnika (z limitem i czyszczeniem tekstu)');
     const first = v0.currentSeat;
-    const v1 = (await a.wait(m => m.t === 'game' && m.view.phase === 'play' && m.view.currentSeat !== first, 5000)).view;
+    const v1 = (await a.wait(m => m.t === 'game' && m.view.phase === 'play' && m.view.currentSeat !== first, 8000)).view;
     assert(v1.turnNo > v0.turnNo);
     console.log('✓ po upływie limitu tura przechodzi sama na przeciwnika');
-    const v2 = (await a.wait(m => m.t === 'game' && m.view.currentSeat === first && m.view.turnNo > v1.turnNo, 5000)).view;
+    const v2 = (await a.wait(m => m.t === 'game' && m.view.currentSeat === first && m.view.turnNo > v1.turnNo, 8000)).view;
     assert(v2.turnNo > v1.turnNo);
     console.log('✓ limit działa w kolejnych turach');
     console.log('\nTest limitu tury zaliczony.');

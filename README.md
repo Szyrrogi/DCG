@@ -83,6 +83,14 @@ rozjazdów jak przy synchronizacji Photonem. Działa na komputerze i telefonie.
 - **Limit tury online: 67 sekund.** Licznik ⏱ jest obok napisu tury, w ostatnich 20 s pali się lont,
   a po czasie tura kończy się sama (niedokończone wybory rozstrzygają się losowo). Gry z botami nie mają limitu.
 - **Dwuklik na kartę** zagrywa ją od razu: jednostkę na koniec planszy, piosenkę z celem – w bohatera.
+- **Emotki**: kliknij swojego bohatera (albo 💬 przy historii) – „Witaj”, „Dobre zagranie”, „hihihi-ha”,
+  „Missclik”, „Ez”, „O ty chuju” albo własny tekst (do 40 znaków). Dymek pojawia się przy bohaterze u obu graczy
+  i obserwatorów. Można wyciszyć emotki przeciwnika. Boty witają się i czasem odpowiadają.
+- **Animacje**: ekran „VS” na starcie, piosenki lecą jako pociski do celu, zaklęcia obszarowe dają falę
+  uderzeniową przez planszę, legendy mają złote wejście z promieniami, okrzyki bojowe strzelają z jednostki,
+  wejście jednostki wzbija kurz (legendarne trzęsą ekranem), Prowokacja błyska tarczą, z ginących jednostek
+  ulatuje dusza, leczenie i wzmocnienia sypią iskrami, mocne trafienia w Ciebie dają czerwony błysk,
+  przegrany bohater pęka i wybucha, a karty pochylają się w 3D z połyskiem pod kursorem.
 - **Telefony**: osobny układ pionowy i poziomy – cała ręka mieści się bez przewijania, widać talię,
   rękę i cmentarz przeciwnika, a jednostki dopasowują się do szerokości ekranu.
 - **Ustawianie jednostek**: zagrywana jednostka nie ląduje już zawsze z prawej. Kliknij kartę i wybierz

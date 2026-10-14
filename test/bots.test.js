@@ -134,6 +134,17 @@ async function playBot(c, deckId, bot) {
       console.log(`✓ ${bot}: ${over.result === 'win' ? 'wygrana +' + over.reward.gold : 'porażka'} (nagroda poprawna)`);
     }
 
+    // bot wita się emotką i odpowiada na emotki
+    c.inbox.length = 0;
+    c.send({ t: 'startBot', bot: 'trener', deckId });
+    await c.wait(m => m.t === 'game');
+    const g0 = c.view.id;
+    const hi = await c.wait(m => m.t === 'emote' && m.game === g0, 6000);
+    assert.strictEqual(hi.text, 'Witaj'); assert.notStrictEqual(hi.seat, c.view.mySeat);
+    c.send({ t: 'act', action: { type: 'concede' } });
+    await c.wait(m => m.t === 'gameOver'); await c.wait(m => m.t === 'me');
+    console.log('✓ bot wita się emotką');
+
     // poddanie w grze z botem kończy grę bez nagrody
     c.send({ t: 'startBot', bot: 'trener', deckId });
     await c.wait(m => m.t === 'game');

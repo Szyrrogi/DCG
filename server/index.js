@@ -267,6 +267,24 @@ function onTurnTimeout(g, key) {
   if (g.over) settleGame(g);
 }
 
+// ---------------- emotki ----------------
+const EMOTES = ['Witaj', 'Dobre zagranie', 'hihihi-ha', 'Missclik', 'Ez', 'O ty chuju'];
+const EMOTE_MAX = 40;
+const lastEmote = new Map();
+function cleanEmote(t) { return String(t || '').replace(/[\u0000-\u001f\u007f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, EMOTE_MAX); }
+function broadcastEmote(g, seat, text) {
+  const msg = { t: 'emote', seat, text, game: g.id };
+  for (const p of g.players) if (!p.isBot) sendTo(p.userId, msg);
+  for (const id of spectators.get(g.id) || []) sendTo(id, msg);
+}
+// bot czasem odpowiada na emotki i wita się na starcie
+const BOT_REPLY = { 'Witaj': 'Witaj', 'Dobre zagranie': 'hihihi-ha', 'Ez': 'O ty chuju', 'Missclik': 'Ez', 'hihihi-ha': 'hihihi-ha', 'O ty chuju': 'Ez' };
+function botEmote(g, text, delay = 900) {
+  const seat = g.players.findIndex(p => p.isBot);
+  if (seat < 0) return;
+  setTimeout(() => { if (games.has(g.id)) broadcastEmote(g, seat, text); }, delay);
+}
+
 // ---------------- przeciwnik komputerowy ----------------
 const BOT_SPEED = Math.max(0, Number(process.env.BOT_DELAY_SCALE || 1)); // testy: 0.01
 const BOT_DELAY = { mulligan: 1400, mana: 650, play: 1350, attack: 1150, end: 900, choose: 1000, choiceIndex: 1000 };
@@ -309,6 +327,7 @@ function startBotGame(u, deck, bot) {
   g.mulliganEndsAt = Date.now() + 40_000;
   g.turnFresh = true;
   setTimeout(() => { if (g.phase === 'mulligan' && !g.over) { g.autoMulligan(); sendGame(g); } }, 40_500);
+  botEmote(g, 'Witaj', 2600);
   games.set(id, g);
   userGame.set(u.id, id);
   stopSpectating(u.id);
@@ -323,6 +342,7 @@ function settleBotGame(g) {
   if (g.botTimer) { clearTimeout(g.botTimer); g.botTimer = null; }
   userGame.delete(u.id);
   const won = g.winner === humanSeat;
+  if (g.endReason !== 'concede') botEmote(g, won ? 'Dobre zagranie' : 'Ez', 300);
   const rec = u.adventure[bot.id] || (u.adventure[bot.id] = { wins: 0, losses: 0 });
   let gold = 0, first = false;
   if (won) {
@@ -441,7 +461,7 @@ function handle(ws, msg) {
     ws.userId = u.id;
     sockets.set(u.id, ws);
     offlineSince.delete(u.id);
-    send(ws, { t: 'auth', token, me: publicProfile(u), cards: PUBLIC_CARDS, bots: publicBots() });
+    send(ws, { t: 'auth', token, me: publicProfile(u), cards: PUBLIC_CARDS, bots: publicBots(), emotes: EMOTES });
     send(ws, { t: 'market', ...marketState() });
     if (u.draft) send(ws, { t: 'draftState', draft: u.draft });
     const gid = userGame.get(u.id);
@@ -575,6 +595,19 @@ function handle(ws, msg) {
       if (!deck) return err('Wybierz talię.');
       const e = validateDeck(u, deck.cards); if (e) return err('Twoja talia jest niepoprawna: ' + e);
       startBotGame(u, deck, bot); return;
+    }
+    case 'emote': {
+      const g = games.get(userGame.get(u.id));
+      if (!g || g.over) return;
+      const now = Date.now();
+      if (now - (lastEmote.get(u.id) || 0) < 1500) return;
+      lastEmote.set(u.id, now);
+      const text = cleanEmote(msg.text);
+      if (!text) return;
+      const seat = g.players.findIndex(p => p.userId === u.id);
+      broadcastEmote(g, seat, text);
+      if (g.bot && Math.random() < 0.6) botEmote(g, BOT_REPLY[text] || EMOTES[Math.floor(Math.random() * EMOTES.length)], 1100 + Math.random() * 800);
+      return;
     }
     case 'cancelChallenge': challenges.delete(u.id); broadcastLobby(); return;
     case 'declineChallenge': challenges.delete(msg.from); broadcastLobby(); return;
